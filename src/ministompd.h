@@ -4,6 +4,7 @@
 #include "frame.h"
 #include "frameparser.h"
 #include "headerbundle.h"
+#include "listener.h"
 #include "alloc.h"
 
 #define LIMIT_FRAME_CMD_LINE_LEN      32

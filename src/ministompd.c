@@ -9,8 +9,24 @@ void parse_file(char *filename);
 
 int main(int argc, char *argv[])
 {
+  // Create a new listener
+  listener *l = listener_new();
+  if (!listener_set_address(l, "::1", 61613))
+  {
+    printf("Couldn't set listening address.\n");
+    exit(1);
+  }
+  else if (!listener_listen(l))
+  {
+    printf("Couldn't listen on socket.\n");
+    exit(1);
+  }
+
+  // Parse each file given on the command line
   for (int i = 1; i < argc; i++)
     parse_file(argv[i]);
+
+  listener_free(l);
 
   return 0;
 }
