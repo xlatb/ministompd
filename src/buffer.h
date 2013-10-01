@@ -23,6 +23,7 @@ void    buffer_compact(buffer *b);
 void    buffer_resize(buffer *b, size_t size);
 void    buffer_ensure_slack(buffer *b, size_t new_slack);
 ssize_t buffer_in_from_fd(buffer *b, int fd, size_t size);
+ssize_t buffer_out_to_fd(buffer *b, int fd, size_t size);
 int     buffer_find_byte(buffer *b, uint8_t byte);
 int     buffer_find_byte_within(buffer *b, uint8_t byte, int position, size_t length);
 void    buffer_append_bytestring(buffer *b, bytestring *bs, int position, size_t length);

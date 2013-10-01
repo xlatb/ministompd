@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <string.h>  // memmove()
 #include <unistd.h>  // read(), write()
 #include "ministompd.h"
@@ -64,6 +63,7 @@ void buffer_ensure_slack(buffer *b, size_t new_slack)
   buffer_resize(b, b->size + (new_slack - cur_slack));
 }
 
+// Reads data from an fd and adds it to the end of the buffer.
 // Return value is the number of bytes consumed from the fd, 0 on EOF, or -1 on error.
 ssize_t buffer_in_from_fd(buffer *b, int fd, size_t size)
 {
@@ -75,6 +75,29 @@ ssize_t buffer_in_from_fd(buffer *b, int fd, size_t size)
   if (ret > 0)
   {
     b->length += ret;
+  }
+
+  return ret;
+}
+
+// Writes data to an fd and removes it from the start of the buffer.
+// Return value is the number of bytes consumed by the fd, or -1 on error.
+ssize_t buffer_out_to_fd(buffer *b, int fd, size_t size)
+{
+  // Bounds check
+  if (size > b->length)
+    size = b->length;
+
+  // Don't bother if there's nothing to send
+  if (size == 0)
+    return 0;
+
+  // Write data to the fd
+  int ret = write(fd, b->data + b->position, size);
+  if (ret > 0)
+  {
+    b->position += ret;
+    b->length -= ret;
   }
 
   return ret;

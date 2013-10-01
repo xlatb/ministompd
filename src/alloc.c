@@ -1,5 +1,5 @@
+#include <stdio.h>
 #include <stdlib.h>  // malloc(), etc
-#include <stdio.h>   // fprintf()
 #include "alloc.h"
 
 // A malloc() which prints an error and dies if the request cannot be satisfied.

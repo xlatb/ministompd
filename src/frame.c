@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <string.h> // strcmp()
 
 #include "ministompd.h"

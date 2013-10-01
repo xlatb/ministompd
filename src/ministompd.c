@@ -1,16 +1,22 @@
 #include <sys/types.h>  // open()
 #include <sys/stat.h>   // open()
 #include <fcntl.h>      // open()
+#include <sys/select.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <unistd.h>  // STDIN_FILENO
 #include "ministompd.h"
 
+listener *l;
+
+void loop(void);
 void parse_file(char *filename);
+void handle_connection(connection *c);
 
 int main(int argc, char *argv[])
 {
   // Create a new listener
-  listener *l = listener_new();
+  l = listener_new();
   if (!listener_set_address(l, "::1", 61613))
   {
     printf("Couldn't set listening address.\n");
@@ -22,13 +28,72 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  // Parse each file given on the command line
-  for (int i = 1; i < argc; i++)
-    parse_file(argv[i]);
+  // Run event loop
+  loop();
 
+  // Clean up listener
   listener_free(l);
 
   return 0;
+}
+
+void loop(void)
+{
+  connectionbundle *cb = connectionbundle_new();
+
+  bool done = false;
+
+  while (!done)
+  {
+    fd_set readfds, writefds;
+    FD_ZERO(&readfds);
+    FD_ZERO(&writefds);
+
+    int highfd = 0;
+
+    // Mark fds to watch
+    highfd = listener_mark_fds(l, highfd, &readfds, &writefds);
+    highfd = connectionbundle_mark_fds(cb, highfd, &readfds, &writefds);
+
+    struct timeval timeout = {30, 0};  // Thirty seconds
+
+    // Wait for activity on fds
+    int count = select(highfd + 1, &readfds, &writefds, NULL, &timeout);
+    printf("Select returned: %d\n", count);
+
+    // Give up if the select() didn't work
+    if (count < 0)
+    {
+      perror("select()");
+      exit(1);
+    }
+
+    // If nothing happened, keep waiting
+    if (count == 0)
+      continue;
+
+    // Check for new connections
+    connection *c = listener_accept_connection(l, &readfds);
+    if (c != NULL)
+    {
+      connectionbundle_add_connection(cb, c);
+    }
+
+    // Check for activity on existing connections
+    cb_iter iter = connectionbundle_iter_new(cb);
+    while ((c = connectionbundle_get_next_active_connection(cb, &iter, &readfds, &writefds)))
+    {
+      handle_connection(c);
+    }
+  }
+}
+
+void handle_connection(connection *c)
+{
+  printf("Connection %p is interesting.\n", c);
+  connection_dump(c);
+
+  connection_pump(c);
 }
 
 void parse_file(char *filename)

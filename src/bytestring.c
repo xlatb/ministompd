@@ -1,4 +1,3 @@
-#include <stdio.h>   // vsnprintf()
 #include <string.h>  // memcpy(), memchr()
 #include <ctype.h>   // isprint()
 

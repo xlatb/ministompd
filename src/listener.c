@@ -120,6 +120,55 @@ bool listener_listen(listener *l)
   return true;
 }
 
+// Marks fds for watching by a later select() call. Returns the highest known fd.
+int listener_mark_fds(listener *l, int highfd, fd_set *readfds, fd_set *writefds)
+{
+  // Bail out if we're not actually listening
+  if (l->status != LISTENER_STATUS_OK)
+    return highfd;
+
+  if (highfd < l->fd)
+    highfd = l->fd;
+
+  // Select for reading
+  FD_SET(l->fd, readfds);
+
+  return highfd;
+}
+
+// Accepts a new connection, if possible, and returns it. If there is nothing
+//  to accept, returns NULL. If the caller supplies the 'readfds' arg, no
+//  work is done unless the listening fd is active in that set.
+connection *listener_accept_connection(listener *l, fd_set *readfds)
+{
+  // Double check the fd_set, if one was supplied
+  if ((readfds != NULL) && !FD_ISSET(l->fd, readfds))
+    return NULL;  // Our fd was not active in the set
+
+  // Attempt to accept connection
+  struct sockaddr_storage addr;
+  socklen_t addrlen = sizeof(addr);
+  int fd = accept(l->fd, (struct sockaddr *)&addr, &addrlen);
+
+  // Handle errors
+  if (fd < 0)
+  {
+    int err = errno;
+
+    if ((err == EAGAIN) || (err == EWOULDBLOCK))
+      return NULL;  // Nothing to accept
+
+    // Unexpected error, bail out
+    perror("accept()");
+    exit(1);
+  }
+
+  // Wrap the new connection
+  connection *c = connection_new(CONNECTION_STATUS_LOGIN, fd);
+
+  return c;
+}
+
 void listener_free(listener *l)
 {
   xfree(l->sockaddr);
