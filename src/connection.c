@@ -3,9 +3,11 @@
 
 #include "ministompd.h"
 
-static void connection_set_error(connection *c, int error)
+// Abort the connection due to a socket error.
+static void connection_abort(connection *c, int error)
 {
-  c->status = CONNECTION_STATUS_ERROR;
+  c->status = CONNECTION_STATUS_CLOSED;
+  close(c->fd);
 
   if (c->error != 0)
     c->error = error;
@@ -36,6 +38,12 @@ connection *connection_new(enum connection_status status, int fd)
   return c;
 }
 
+void connection_close(connection *c)
+{
+  c->status = CONNECTION_STATUS_CLOSED;
+  close(c->fd);
+}
+
 // Push waiting I/O through the connection.
 void connection_pump(connection *c)
 {
@@ -44,11 +52,15 @@ void connection_pump(connection *c)
 
   // Try to read some data
   readcount = buffer_in_from_fd(c->inbuffer, c->fd, NETWORK_READ_SIZE);
-  if (readcount < 0)
+  if (readcount == 0)
+  {
+    connection_close(c);
+  }
+  else if (readcount < 0)
   {
     int error = errno;
     if ((error != EAGAIN) && (error != EWOULDBLOCK))
-      connection_set_error(c, error);  // Unexpected error
+      connection_abort(c, error);  // Unexpected error
   }
 
   // If we have data waiting to go out, try writing it
@@ -59,8 +71,10 @@ void connection_pump(connection *c)
     if (writecount < 0)
     {
       int error = errno;
-      if ((error != EAGAIN) && (error != EWOULDBLOCK))
-        connection_set_error(c, error);  // Unexpected error
+      if (error == EPIPE)
+        connection_close(c);
+      else if ((error != EAGAIN) && (error != EWOULDBLOCK))
+        connection_abort(c, error);  // Unexpected error
     }
   }
 

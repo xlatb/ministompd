@@ -45,15 +45,16 @@ int connectionbundle_mark_fds(connectionbundle *cb, int highfd, fd_set *readfds,
   for (int s = 0; s < cb->size; s++)
   {
     connection *c = cb->connections[s];
-    if (c == NULL)
+    if ((c == NULL) || (c->status == CONNECTION_STATUS_CLOSED))
       continue;
 
     // Track the highest-numbered fd
     if (highfd < c->fd)
       highfd = c->fd;
 
-    // Always select for reading
-    FD_SET(c->fd, readfds);
+    // Always select for reading unless we're sending an error frame
+    if (c->status != CONNECTION_STATUS_STOMP_ERROR)
+      FD_SET(c->fd, readfds);
 
     // Select for writing if the write buffer is not empty
     if (buffer_get_length(c->outbuffer) > 0)
@@ -79,6 +80,25 @@ connection *connectionbundle_get_next_active_connection(connectionbundle *cb, cb
     if (FD_ISSET(c->fd, readfds) || FD_ISSET(c->fd, writefds))
     {
       *iter = s + 1;
+      return c;
+    }
+  }
+
+  return NULL;  // No more connections to check
+}
+
+// Finds the next closed connection in the bundle. Removes it from the bundle
+//  and returns it. Caller takes ownership of the returned connection. Returns
+//  NULL if there are no more connections to reap.
+connection *connectionbundle_reap_next_connection(connectionbundle *cb, cb_iter *iter)
+{
+  for (int s = *iter; s < cb->size; s++)
+  {
+    connection *c = cb->connections[s];
+    if ((c != NULL) && (c->status == CONNECTION_STATUS_CLOSED))
+    {
+      *iter = s + 1;
+      cb->connections[s] = NULL;
       return c;
     }
   }

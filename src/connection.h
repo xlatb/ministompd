@@ -6,9 +6,9 @@
 enum connection_status
 {
   CONNECTION_STATUS_CLOSED,
-  CONNECTION_STATUS_ERROR,
   CONNECTION_STATUS_LOGIN,
-  CONNECTION_STATUS_CONNECTED
+  CONNECTION_STATUS_CONNECTED,
+  CONNECTION_STATUS_STOMP_ERROR  // Push out an ERROR frame and then disconnect
 };
 
 enum connection_version
@@ -20,7 +20,7 @@ typedef struct
 {
   enum connection_status  status;        // Current status
   enum connection_version version;       // STOMP version used for this connection
-  int                     error;         // If in error status, contains the errno
+  int                     error;         // If the connection was aborted by a socket error, contains the errno
   int                     fd;            // Underlying fd
   int                     inheartbeat;   // Negotiated incoming heartbeat frequency
   int                     outheartbeat;  // Negotiated outgoing heartbeat frequency
@@ -31,9 +31,10 @@ typedef struct
   frameparser            *frameparser;   // Frame parser
 } connection;
 
-connection *connection_new(enum connection_status status, int fd);
-void        connection_pump(connection *c);
-void        connection_dump(connection *c);
-void        connection_free(connection *c);
+connection  *connection_new(enum connection_status status, int fd);
+void         connection_close(connection *c);
+void         connection_pump(connection *c);
+void         connection_dump(connection *c);
+void         connection_free(connection *c);
 
 #endif

@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>  // STDIN_FILENO
+#include <signal.h>  // signal()
+#include <string.h>  // strerror()
 #include "ministompd.h"
 
 listener *l;
@@ -12,9 +14,13 @@ listener *l;
 void loop(void);
 void parse_file(char *filename);
 void handle_connection(connection *c);
+void reap_connection(connection *c);
 
 int main(int argc, char *argv[])
 {
+  // Ignore SIGPIPE
+  signal(SIGPIPE, SIG_IGN);
+
   // Create a new listener
   l = listener_new();
   if (!listener_set_address(l, "::1", 61613))
@@ -76,6 +82,7 @@ void loop(void)
     connection *c = listener_accept_connection(l, &readfds);
     if (c != NULL)
     {
+      printf("New connection %p accepted.\n", c);
       connectionbundle_add_connection(cb, c);
     }
 
@@ -84,6 +91,13 @@ void loop(void)
     while ((c = connectionbundle_get_next_active_connection(cb, &iter, &readfds, &writefds)))
     {
       handle_connection(c);
+    }
+
+    // Check for closed connections
+    iter = connectionbundle_iter_new(cb);
+    while ((c = connectionbundle_reap_next_connection(cb, &iter)))
+    {
+      reap_connection(c);
     }
   }
 }
@@ -94,6 +108,33 @@ void handle_connection(connection *c)
   connection_dump(c);
 
   connection_pump(c);
+
+  frameparser_outcome outcome = frameparser_parse(c->frameparser, c->inbuffer);
+  printf("Parse: %d\n", outcome);
+
+  if (outcome == FP_OUTCOME_ERROR)
+  {
+    printf("-- Parse error: ");
+    bytestring_dump(frameparser_get_error(c->frameparser));
+  }
+  else if (outcome == FP_OUTCOME_FRAME)
+  {
+    frame *f = frameparser_get_frame(c->frameparser);
+    printf("-- Completed frame: ");
+    frame_dump(f);
+    frame_free(f);
+  }
+
+}
+
+void reap_connection(connection *c)
+{
+  if (c->error)
+    printf("Connection %p closed due to error: %s\n", c, strerror(c->error));
+  else
+    printf("Connection %p has closed normally.\n", c);
+
+  connection_free(c);
 }
 
 void parse_file(char *filename)
