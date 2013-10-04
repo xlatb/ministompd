@@ -11,7 +11,7 @@ buffer *buffer_new(size_t size)
     size = 1;
 
   b->size = size;
-  b->max_size = 0;  // Unused
+  b->max_size = 0;  // TODO: Implement buffer size limit
   b->length = 0;
   b->position = 0;
   b->data = d;
@@ -26,7 +26,8 @@ void buffer_compact(buffer *b)
     return;  // Nothing to do
 
   // Reposition data
-  memmove(b->data, b->data + b->position, b->length);
+  if (b->length)
+    memmove(b->data, b->data + b->position, b->length);
   b->position = 0;
 
   return;
@@ -65,7 +66,7 @@ void buffer_ensure_slack(buffer *b, size_t new_slack)
 
 // Reads data from an fd and adds it to the end of the buffer.
 // Return value is the number of bytes consumed from the fd, 0 on EOF, or -1 on error.
-ssize_t buffer_in_from_fd(buffer *b, int fd, size_t size)
+ssize_t buffer_input_fd(buffer *b, int fd, size_t size)
 {
   // Ensure we have enough slack space to accomodate the read() request
   buffer_ensure_slack(b, size);
@@ -80,9 +81,59 @@ ssize_t buffer_in_from_fd(buffer *b, int fd, size_t size)
   return ret;
 }
 
+// Reads data from a string of bytes.
+// Returns the number of bytes read.
+ssize_t buffer_input_bytes(buffer *b, const uint8_t *bytes, size_t size)
+{
+  // Ensure we have enough slack space
+  buffer_ensure_slack(b, size);
+
+  // Add the bytes to the end of the buffer
+  memcpy(b->data + b->position + b->length, bytes, size);
+  b->length += size;
+
+  return size;
+}
+
+// Reads a single byte into the buffer.
+// Returns the number of bytes read.
+ssize_t buffer_input_byte(buffer *b, uint8_t byte)
+{
+  // Ensure we have enough slack space
+  buffer_ensure_slack(b, 1);
+
+  // Add the byte
+  b->data[b->position + b->length] = byte;
+  b->length++;
+
+  return 1;
+}
+
+// Reads a bytestring into the buffer.
+// Returns the number of bytes read.
+ssize_t buffer_input_bytestring(buffer *b, const bytestring *bs)
+{
+  return buffer_input_bytes(b, bs->data, bs->length);
+}
+
+// Reads a segment of a bytestring into the buffer.
+// Returns the number of bytes read.
+ssize_t buffer_input_bytestring_slice(buffer *b, const bytestring *bs, int position, size_t length)
+{
+  // Bounds check
+  if ((position < 0) || (position > bs->length))
+    return 0;  // Out of bounds
+
+  // Don't write more bytes than are in the string
+  if ((position + length) > bs->length)
+    length = bs->length - position;
+
+  return buffer_input_bytes(b, bs->data + position, length);
+}
+
 // Writes data to an fd and removes it from the start of the buffer.
 // Return value is the number of bytes consumed by the fd, or -1 on error.
-ssize_t buffer_out_to_fd(buffer *b, int fd, size_t size)
+ssize_t buffer_output_fd(buffer *b, int fd, size_t size)
 {
   // Bounds check
   if (size > b->length)
@@ -99,6 +150,10 @@ ssize_t buffer_out_to_fd(buffer *b, int fd, size_t size)
     b->position += ret;
     b->length -= ret;
   }
+
+  // If buffer is empty now, do trivial compaction
+  if (b->length == 0)
+    b->position = 0;
 
   return ret;
 }

@@ -5,6 +5,7 @@
 #include "bytestring.h"
 #include "frame.h"
 #include "frameparser.h"
+#include "frameserializer.h"
 #include "headerbundle.h"
 #include "connection.h"
 #include "connectionbundle.h"

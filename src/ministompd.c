@@ -122,8 +122,11 @@ void handle_connection(connection *c)
     frame *f = frameparser_get_frame(c->frameparser);
     printf("-- Completed frame: ");
     frame_dump(f);
-    frame_free(f);
+
+    frameserializer_enqueue_frame(c->frameserializer, f);
   }
+
+  frameserializer_serialize(c->frameserializer, c->outbuffer);
 
 }
 
@@ -150,7 +153,7 @@ void parse_file(char *filename)
 
   buffer *b = buffer_new(4096);
 
-  while (buffer_in_from_fd(b, fd, 4096) > 0)
+  while (buffer_input_fd(b, fd, 4096) > 0)
   {
     printf("Read loop...\n");
 

@@ -23,17 +23,18 @@ connection *connection_new(enum connection_status status, int fd)
   gettimeofday(&connecttime, NULL);
 
   // Fill in fields
-  c->status       = status;
-  c->version      = CONNECTION_VERSION_1_2;
-  c->error        = 0;
-  c->fd           = fd;
-  c->inheartbeat  = 0;
-  c->outheartbeat = 0;
-  c->readtime     = connecttime;
-  c->writetime    = connecttime;
-  c->inbuffer     = buffer_new(4096);
-  c->outbuffer    = buffer_new(4096);
-  c->frameparser  = frameparser_new();
+  c->status          = status;
+  c->version         = CONNECTION_VERSION_1_2;
+  c->error           = 0;
+  c->fd              = fd;
+  c->inheartbeat     = 0;
+  c->outheartbeat    = 0;
+  c->readtime        = connecttime;
+  c->writetime       = connecttime;
+  c->inbuffer        = buffer_new(4096);
+  c->outbuffer       = buffer_new(4096);
+  c->frameparser     = frameparser_new();
+  c->frameserializer = frameserializer_new();
 
   return c;
 }
@@ -51,7 +52,7 @@ void connection_pump(connection *c)
   int writecount = 0;
 
   // Try to read some data
-  readcount = buffer_in_from_fd(c->inbuffer, c->fd, NETWORK_READ_SIZE);
+  readcount = buffer_input_fd(c->inbuffer, c->fd, NETWORK_READ_SIZE);
   if (readcount == 0)
   {
     connection_close(c);
@@ -67,7 +68,7 @@ void connection_pump(connection *c)
   size_t outbuflen = buffer_get_length(c->outbuffer);
   if (outbuflen > 0)
   {
-    writecount = buffer_out_to_fd(c->outbuffer, c->fd, outbuflen);
+    writecount = buffer_output_fd(c->outbuffer, c->fd, outbuflen);
     if (writecount < 0)
     {
       int error = errno;
@@ -103,6 +104,7 @@ void connection_dump(connection *c)
 void connection_free(connection *c)
 {
   frameparser_free(c->frameparser);
+  frameserializer_free(c->frameserializer);
   buffer_free(c->inbuffer);
   buffer_free(c->outbuffer);
   xfree(c);

@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS=-std=c99 -g -Wall
 #CFLAGS=-std=c99 -O2 -Wall
 
-OBJS=ministompd.o frame.o frameparser.o buffer.o bytestring.o headerbundle.o connection.o connectionbundle.o listener.o alloc.o
+OBJS=ministompd.o frame.o frameparser.o frameserializer.o buffer.o bytestring.o headerbundle.o connection.o connectionbundle.o listener.o alloc.o
 
 ministompd : $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o ministompd
@@ -15,6 +15,9 @@ frame.o : src/frame.c src/*.h
 
 frameparser.o : src/frameparser.c src/*.h
 	$(CC) $(CFLAGS) -c src/frameparser.c
+
+frameserializer.o : src/frameserializer.c src/*.h
+	$(CC) $(CFLAGS) -c src/frameserializer.c
 
 buffer.o : src/buffer.c src/*.h
 	$(CC) $(CFLAGS) -c src/buffer.c

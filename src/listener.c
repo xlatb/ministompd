@@ -163,6 +163,14 @@ connection *listener_accept_connection(listener *l, fd_set *readfds)
     exit(1);
   }
 
+  // Turn on O_NONBLOCK
+  int flags = fcntl(fd, F_GETFL);
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+  {
+    perror("fcntl()");
+    exit(1);
+  }
+
   // Wrap the new connection
   connection *c = connection_new(CONNECTION_STATUS_LOGIN, fd);
 

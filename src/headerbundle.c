@@ -58,6 +58,24 @@ void headerbundle_append_header(headerbundle *hb, bytestring *key, bytestring *v
   hb->count++;
 }
 
+// Returns true iff the bundle has a header with the given index. If the key
+//  and/or val pointers are provided, they will be filled in with a pointer
+//  to the respective bytestring.
+bool headerbundle_get_header(headerbundle *hb, int index, const bytestring **key, const bytestring **val)
+{
+  // Bounds check
+  if ((index < 0) || (index >= hb->count))
+    return false;  // No such header
+
+  // Fill in pointers, if needed
+  if (key)
+    *key = hb->headers[index].key;
+  if (val)
+    *val = hb->headers[index].val;
+
+  return true;
+}
+
 // Returns the value of the first header in the bundle whose key matches the
 //  given string. Returns NULL on no match.
 const bytestring *headerbundle_get_header_value_by_str(headerbundle *hb, const char *key)

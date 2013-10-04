@@ -18,17 +18,18 @@ enum connection_version
 
 typedef struct
 {
-  enum connection_status  status;        // Current status
-  enum connection_version version;       // STOMP version used for this connection
-  int                     error;         // If the connection was aborted by a socket error, contains the errno
-  int                     fd;            // Underlying fd
-  int                     inheartbeat;   // Negotiated incoming heartbeat frequency
-  int                     outheartbeat;  // Negotiated outgoing heartbeat frequency
-  struct timeval          readtime;      // Time of last read() returning data from underlying socket
-  struct timeval          writetime;     // Time of last successful write() to underlying socket
-  buffer                 *inbuffer;      // Input buffer
-  buffer                 *outbuffer;     // Output buffer
-  frameparser            *frameparser;   // Frame parser
+  enum connection_status  status;           // Current status
+  enum connection_version version;          // STOMP version used for this connection
+  int                     error;            // If the connection was aborted by a socket error, contains the errno
+  int                     fd;               // Underlying fd
+  int                     inheartbeat;      // Negotiated incoming heartbeat frequency
+  int                     outheartbeat;     // Negotiated outgoing heartbeat frequency
+  struct timeval          readtime;         // Time of last read() returning data from underlying socket
+  struct timeval          writetime;        // Time of last successful write() to underlying socket
+  buffer                 *inbuffer;         // Input buffer
+  buffer                 *outbuffer;        // Output buffer
+  frameparser            *frameparser;      // Frame parser
+  frameserializer        *frameserializer;  // Frame serializer
 } connection;
 
 connection  *connection_new(enum connection_status status, int fd);
