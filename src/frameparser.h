@@ -33,7 +33,7 @@ typedef struct
 } frameparser;
 
 frameparser        *frameparser_new(void);
-bytestring         *frameparser_get_error(frameparser *fp);
+const bytestring   *frameparser_get_error(frameparser *fp);
 frame              *frameparser_get_frame(frameparser *fp);
 frameparser_outcome frameparser_parse(frameparser *fp, buffer *b);
 void                frameparser_free(frameparser *fp);

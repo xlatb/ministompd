@@ -45,11 +45,10 @@ void connection_close(connection *c)
   close(c->fd);
 }
 
-// Push waiting I/O through the connection.
-void connection_pump(connection *c)
+// Pull waiting input in to the connection's buffer.
+void connection_pump_input(connection *c)
 {
   int readcount = 0;
-  int writecount = 0;
 
   // Try to read some data
   readcount = buffer_input_fd(c->inbuffer, c->fd, NETWORK_READ_SIZE);
@@ -63,6 +62,16 @@ void connection_pump(connection *c)
     if ((error != EAGAIN) && (error != EWOULDBLOCK))
       connection_abort(c, error);  // Unexpected error
   }
+
+  // Update read timestamp, if needed
+  if (readcount > 0)
+    gettimeofday(&c->readtime, NULL);
+}
+
+// Push waiting output out to the socket.
+void connection_pump_output(connection *c)
+{
+  int writecount = 0;
 
   // If we have data waiting to go out, try writing it
   size_t outbuflen = buffer_get_length(c->outbuffer);
@@ -79,21 +88,48 @@ void connection_pump(connection *c)
     }
   }
 
-  // Update timestamps
-  if (readcount || writecount)
+  // Update write timestamp, if needed
+  if (writecount > 0)
+    gettimeofday(&c->writetime, NULL);
+
+}
+
+// Puts the connection in error status and queues an ERROR frame for output.
+//  The causalframe should contain the client frame that casued the error,
+//  or NULL if there is none. Takes ownership of the error message bytestring.
+void connection_send_error_message(connection *c, frame *causalframe, bytestring *msg)
+{
+  // Set error connection status
+  c->status = CONNECTION_STATUS_STOMP_ERROR;
+
+  // Create an error frame containing the message
+  frame *errorframe = frame_new();
+  frame_set_command(errorframe, CMD_ERROR);
+
+  // Set error message header
+  headerbundle *errorheaders = frame_get_headerbundle(errorframe);
+  headerbundle_append_header(errorheaders, bytestring_new_from_string("message"), msg);
+
+  // If there was a causal frame, add details from it
+  if (causalframe)
   {
-    // Get current time
-    struct timeval iotime;
-    gettimeofday(&iotime, NULL);
-
-    // Update read timestamp if needed
-    if (readcount > 0)
-      c->readtime = iotime;
-
-    // Update write timestamp if needed
-    if (writecount > 0)
-      c->writetime = iotime;
+    // Original 'receipt' header is included as the error's 'receipt-id' header
+    const bytestring *receipt = headerbundle_get_header_value_by_str(frame_get_headerbundle(causalframe), "receipt");
+    if (receipt)
+    {
+      headerbundle_append_header(errorheaders, bytestring_new_from_string("receipt-id"), bytestring_dup(receipt));;
+    }
   }
+
+  // Enqueue frame
+  if (!frameserializer_enqueue_frame(c->frameserializer, errorframe))
+  {
+    printf("Outgoing queue is full, dropping error frame.\n");
+    connection_close(c);
+    return;
+  }
+
+  return;
 }
 
 void connection_dump(connection *c)

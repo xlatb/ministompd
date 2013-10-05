@@ -233,7 +233,7 @@ static bool frameserializer_serialize_body(frameserializer *fs, buffer *b)
   int writecount = 0;
 
   // If we haven't sent the entire body yet, push out as many bytes as possible
-  size_t bodylen = bytestring_get_length(body);
+  size_t bodylen = body ? bytestring_get_length(body) : 0;
   if (item->body_index < bodylen)
   {
     int count = buffer_input_bytestring_slice(b, body, item->body_index, bodylen - item->body_index);

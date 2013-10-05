@@ -14,6 +14,9 @@ listener *l;
 void loop(void);
 void parse_file(char *filename);
 void handle_connection(connection *c);
+void handle_connection_input(connection *c);
+void handle_connection_input_frame(connection *c, frame *f);
+void handle_connection_output(connection *c);
 void reap_connection(connection *c);
 
 int main(int argc, char *argv[])
@@ -107,8 +110,19 @@ void handle_connection(connection *c)
   printf("Connection %p is interesting.\n", c);
   connection_dump(c);
 
-  connection_pump(c);
+  connection_pump_input(c);
 
+  if ((c->status == CONNECTION_STATUS_LOGIN) || (c->status == CONNECTION_STATUS_CONNECTED))
+    handle_connection_input(c);
+
+  if ((c->status == CONNECTION_STATUS_CONNECTED) || (c->status == CONNECTION_STATUS_STOMP_ERROR))
+    handle_connection_output(c);
+
+  connection_pump_output(c);
+}
+
+void handle_connection_input(connection *c)
+{
   frameparser_outcome outcome = frameparser_parse(c->frameparser, c->inbuffer);
   printf("Parse: %d\n", outcome);
 
@@ -116,6 +130,7 @@ void handle_connection(connection *c)
   {
     printf("-- Parse error: ");
     bytestring_dump(frameparser_get_error(c->frameparser));
+    connection_send_error_message(c, NULL, bytestring_dup(frameparser_get_error(c->frameparser)));
   }
   else if (outcome == FP_OUTCOME_FRAME)
   {
@@ -123,10 +138,43 @@ void handle_connection(connection *c)
     printf("-- Completed frame: ");
     frame_dump(f);
 
-    frameserializer_enqueue_frame(c->frameserializer, f);
+    // Process the frame
+    handle_connection_input_frame(c, f);
   }
 
+}
+
+void handle_connection_input_frame(connection *c, frame *f)
+{
+  if (c->status == CONNECTION_STATUS_LOGIN)
+  {
+    if ((f->command == CMD_STOMP) || (f->command == CMD_CONNECT))
+    {
+      frame *f = frame_new();
+      frame_set_command(f, CMD_CONNECTED);
+      headerbundle *hb = frame_get_headerbundle(f);
+      headerbundle_append_header(hb, bytestring_new_from_string("version"), bytestring_new_from_string("1.2"));
+      if (!frameserializer_enqueue_frame(c->frameserializer, f))
+        abort();  // Couldn't enqueue CONNECTED frame
+      c->status = CONNECTION_STATUS_CONNECTED;
+    }
+    else
+    {
+      connection_send_error_message(c, f, bytestring_new_from_string("Expected STOMP or CONNECT frame"));
+    }
+    return;
+  }
+  else
+  {
+    // Echo frame back to client
+    frameserializer_enqueue_frame(c->frameserializer, f);
+  }
+}
+
+void handle_connection_output(connection *c)
+{
   frameserializer_serialize(c->frameserializer, c->outbuffer);
+
 
 }
 

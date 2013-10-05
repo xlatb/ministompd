@@ -22,6 +22,24 @@ bytestring *bytestring_new(size_t size)
   return bs;
 }
 
+bytestring *bytestring_new_from_string(const char *str)
+{
+  size_t len = strlen(str);
+  bytestring *bs = bytestring_new(len);
+  bytestring_set_bytes(bs, (const uint8_t *)str, len);
+
+  return bs;
+}
+
+// Duplicates a bytestring
+bytestring *bytestring_dup(const bytestring *bs)
+{
+  bytestring *dup = bytestring_new(bs->length);
+  bytestring_set_bytes(dup, bs->data, bs->length);
+
+  return dup;
+}
+
 bytestring *bytestring_resize(bytestring *bs, size_t size)
 {
   // If already the right size, do nothing
@@ -43,7 +61,7 @@ bytestring *bytestring_resize(bytestring *bs, size_t size)
 }
 
 // Replace the contents of the bytestring with the given bytes.
-bytestring *bytestring_set_bytes(bytestring *bs, uint8_t *data, size_t length)
+bytestring *bytestring_set_bytes(bytestring *bs, const uint8_t *data, size_t length)
 {
   // Ensure enough space to hold all data
   if (bs->size < length)
@@ -57,7 +75,7 @@ bytestring *bytestring_set_bytes(bytestring *bs, uint8_t *data, size_t length)
 }
 
 // Append the given bytes to the end of the bytestring.
-bytestring *bytestring_append_bytes(bytestring *bs, uint8_t *data, size_t length)
+bytestring *bytestring_append_bytes(bytestring *bs, const uint8_t *data, size_t length)
 {
   // Ensure enough space to hold all data
   if (bs->size < (bs->length + length))
@@ -267,7 +285,7 @@ bool bytestring_strtol(const bytestring *bs, int start, int *end, long *value, i
   return true;
 }
 
-void bytestring_dump(bytestring *b)
+void bytestring_dump(const bytestring *b)
 {
   printf("bytestring %p size %zd length %zd: ", b, b->size, b->length);
 

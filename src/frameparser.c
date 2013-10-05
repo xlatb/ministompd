@@ -125,7 +125,7 @@ void frameparser_set_error(frameparser *fp, char *fmt, ...)
   return;
 }
 
-bytestring *frameparser_get_error(frameparser *fp)
+const bytestring *frameparser_get_error(frameparser *fp)
 {
   return fp->error;
 }

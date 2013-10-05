@@ -6,7 +6,7 @@
 enum connection_status
 {
   CONNECTION_STATUS_CLOSED,
-  CONNECTION_STATUS_LOGIN,
+  CONNECTION_STATUS_LOGIN,       // Waiting for login credentials
   CONNECTION_STATUS_CONNECTED,
   CONNECTION_STATUS_STOMP_ERROR  // Push out an ERROR frame and then disconnect
 };
@@ -34,7 +34,9 @@ typedef struct
 
 connection  *connection_new(enum connection_status status, int fd);
 void         connection_close(connection *c);
-void         connection_pump(connection *c);
+void         connection_pump_input(connection *c);
+void         connection_pump_output(connection *c);
+void         connection_send_error_message(connection *c, frame *causalframe, bytestring *msg);
 void         connection_dump(connection *c);
 void         connection_free(connection *c);
 

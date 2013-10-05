@@ -116,7 +116,11 @@ void frame_dump(frame *f)
   printf("== frame ==\n");
   printf("%s\n", frame_command_name(f->command));
   headerbundle_dump(f->headerbundle);
-  bytestring_dump(f->body);
+
+  if (f->body)
+    bytestring_dump(f->body);
+  else
+    printf("(no body)\n");
 }
 
 void frame_free(frame *f)
