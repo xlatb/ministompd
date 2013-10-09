@@ -12,6 +12,9 @@ connectionbundle *connectionbundle_new(void)
   cb->count       = 0;
   cb->connections = xmalloc(sizeof(connection *) * cb->size);
 
+  // Clear initial slots
+  memset(cb->connections, 0, sizeof(connection *) * cb->size);
+
   return cb;
 }
 
