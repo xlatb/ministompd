@@ -169,7 +169,7 @@ void frameparser_parse_headers_complete(frameparser *fp)
       return;
     }
 
-    printf("Content-length is: %ld\n", value);
+    log_printf(LOG_LEVEL_DEBUG, "Content-length is: %ld\n", value);
     fp->length_left = value;
   }
 
@@ -182,7 +182,7 @@ void frameparser_parse_headers_complete(frameparser *fp)
 // Parses keepalive linefeeds. Returns true iff progress was made.
 bool frameparser_parse_idle(frameparser *fp, buffer *b)
 {
-  printf("frameparser_parse_idle\n");
+  log_printf(LOG_LEVEL_DEBUG, "frameparser_parse_idle\n");
   // Valid input in this state is a CR/LF pair, or bare LF
 
   uint8_t byte = buffer_get_byte(b, 0);
@@ -220,7 +220,7 @@ bool frameparser_parse_idle(frameparser *fp, buffer *b)
 // Parses a frame's command. Returns true iff progress was made.
 bool frameparser_parse_command(frameparser *fp, buffer *b)
 {
-  printf("frameparser_parse_command\n");
+  log_printf(LOG_LEVEL_DEBUG, "frameparser_parse_command\n");
   // Valid input in this state is a string followed by CR/LF or LF, which matches a known frame command
 
   // Try to find LF line terminator
@@ -276,7 +276,7 @@ bool frameparser_parse_command(frameparser *fp, buffer *b)
 // Parses a header line. Returns true iff progress was made.
 bool frameparser_parse_header(frameparser *fp, buffer *b)
 {
-  printf("frameparser_parse_header\n");
+  log_printf(LOG_LEVEL_DEBUG, "frameparser_parse_header\n");
   // Valid input in this state is either:
   // 1. CR/LF or LF alone, denoting the end of headers
   // 2. A key name, followed by a colon, followed by a value name, terminated with CR/LF or LF
@@ -352,7 +352,7 @@ bool frameparser_parse_header(frameparser *fp, buffer *b)
 // Parses body. Returns true iff progress was made.
 bool frameparser_parse_body(frameparser *fp, buffer *b)
 {
-  printf("frameparser_parse_body\n");
+  log_printf(LOG_LEVEL_DEBUG, "frameparser_parse_body\n");
 
   if (fp->length_left == FP_LENGTH_UNKNOWN)
   {
@@ -408,7 +408,7 @@ bool frameparser_parse_body(frameparser *fp, buffer *b)
 bool frameparser_parse_end(frameparser *fp, buffer *b)
 {
   // Valid input in this state is simply a single NUL character
-  printf("frameparser_parse_end\n");
+  log_printf(LOG_LEVEL_DEBUG, "frameparser_parse_end\n");
 
   // If there is already a parsed frame that hasn't been picked up yet, we
   //  don't want to overwrite it, so refrain from finishing this frame.

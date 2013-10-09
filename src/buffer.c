@@ -45,7 +45,7 @@ void buffer_resize(buffer *b, size_t size)
   b->size = new_size;
   b->data = xrealloc(b->data, new_size);
 
-  printf("Buffer %p resize to %zd\n", b, new_size);
+  log_printf(LOG_LEVEL_DEBUG, "Buffer %p resize to %zd\n", b, new_size);
 
   // Might as well compact it at the same time
   buffer_compact(b);

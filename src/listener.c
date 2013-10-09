@@ -159,7 +159,7 @@ connection *listener_accept_connection(listener *l, fd_set *readfds)
       return NULL;  // Nothing to accept
 
     // Unexpected error, bail out
-    perror("accept()");
+    log_perror(LOG_LEVEL_ERROR, "accept()");
     exit(1);
   }
 
@@ -167,7 +167,7 @@ connection *listener_accept_connection(listener *l, fd_set *readfds)
   int flags = fcntl(fd, F_GETFL);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
   {
-    perror("fcntl()");
+    log_perror(LOG_LEVEL_ERROR, "fcntl()");
     exit(1);
   }
 

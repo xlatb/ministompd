@@ -124,7 +124,7 @@ void connection_send_error_message(connection *c, frame *causalframe, bytestring
   // Enqueue frame
   if (!frameserializer_enqueue_frame(c->frameserializer, errorframe))
   {
-    printf("Outgoing queue is full, dropping error frame.\n");
+    log_printf(LOG_LEVEL_ERROR, "Outgoing queue is full, dropping error frame.\n");
     connection_close(c);
     return;
   }

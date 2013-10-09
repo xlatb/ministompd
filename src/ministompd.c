@@ -21,6 +21,8 @@ void reap_connection(connection *c);
 
 int main(int argc, char *argv[])
 {
+  log_printf(LOG_LEVEL_INFO, "Starting up.\n");
+
   // Ignore SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 
@@ -28,12 +30,12 @@ int main(int argc, char *argv[])
   l = listener_new();
   if (!listener_set_address(l, "::1", 61613))
   {
-    printf("Couldn't set listening address.\n");
+    log_printf(LOG_LEVEL_ERROR, "Couldn't set listening address.\n");
     exit(1);
   }
   else if (!listener_listen(l))
   {
-    printf("Couldn't listen on socket.\n");
+    log_printf(LOG_LEVEL_ERROR, "Couldn't listen on socket.\n");
     exit(1);
   }
 
@@ -68,12 +70,12 @@ void loop(void)
 
     // Wait for activity on fds
     int count = select(highfd + 1, &readfds, &writefds, NULL, &timeout);
-    printf("Select returned: %d\n", count);
+    log_printf(LOG_LEVEL_DEBUG, "Select returned: %d\n", count);
 
     // Give up if the select() didn't work
     if (count < 0)
     {
-      perror("select()");
+      log_perror(LOG_LEVEL_DEBUG, "select()");
       exit(1);
     }
 
@@ -85,7 +87,7 @@ void loop(void)
     connection *c = listener_accept_connection(l, &readfds);
     if (c != NULL)
     {
-      printf("New connection %p accepted.\n", c);
+      log_printf(LOG_LEVEL_INFO, "New connection %p accepted.\n", c);
       connectionbundle_add_connection(cb, c);
     }
 
@@ -107,7 +109,7 @@ void loop(void)
 
 void handle_connection(connection *c)
 {
-  printf("Connection %p is interesting.\n", c);
+  log_printf(LOG_LEVEL_DEBUG, "Connection %p is interesting.\n", c);
   connection_dump(c);
 
   connection_pump_input(c);
@@ -124,18 +126,18 @@ void handle_connection(connection *c)
 void handle_connection_input(connection *c)
 {
   frameparser_outcome outcome = frameparser_parse(c->frameparser, c->inbuffer);
-  printf("Parse: %d\n", outcome);
+  log_printf(LOG_LEVEL_DEBUG, "Parse: %d\n", outcome);
 
   if (outcome == FP_OUTCOME_ERROR)
   {
-    printf("-- Parse error: ");
+    log_printf(LOG_LEVEL_ERROR, "-- Parse error: ");
     bytestring_dump(frameparser_get_error(c->frameparser));
     connection_send_error_message(c, NULL, bytestring_dup(frameparser_get_error(c->frameparser)));
   }
   else if (outcome == FP_OUTCOME_FRAME)
   {
     frame *f = frameparser_get_frame(c->frameparser);
-    printf("-- Completed frame: ");
+    log_printf(LOG_LEVEL_DEBUG, "-- Completed frame: ");
     frame_dump(f);
 
     // Process the frame
@@ -181,9 +183,9 @@ void handle_connection_output(connection *c)
 void reap_connection(connection *c)
 {
   if (c->error)
-    printf("Connection %p closed due to error: %s\n", c, strerror(c->error));
+    log_printf(LOG_LEVEL_ERROR, "Connection %p closed due to error: %s\n", c, strerror(c->error));
   else
-    printf("Connection %p has closed normally.\n", c);
+    log_printf(LOG_LEVEL_INFO, "Connection %p has closed normally.\n", c);
 
   connection_free(c);
 }
@@ -193,7 +195,7 @@ void parse_file(char *filename)
   int fd = open(filename, O_RDONLY);
   if (fd < 0)
   {
-    perror("open()");
+    log_perror(LOG_LEVEL_ERROR, "open()");
     exit(1);
   }
 
@@ -203,21 +205,21 @@ void parse_file(char *filename)
 
   while (buffer_input_fd(b, fd, 4096) > 0)
   {
-    printf("Read loop...\n");
+    log_printf(LOG_LEVEL_DEBUG, "Read loop...\n");
 
     frameparser_outcome outcome = frameparser_parse(fp, b);
-    printf("Parse: %d\n", outcome);
+    log_printf(LOG_LEVEL_DEBUG, "Parse: %d\n", outcome);
 
     if (outcome == FP_OUTCOME_ERROR)
     {
-      printf("-- Parse error: ");
+      log_printf(LOG_LEVEL_ERROR, "-- Parse error: ");
       bytestring_dump(frameparser_get_error(fp));
       break;
     }
     else if (outcome == FP_OUTCOME_FRAME)
     {
       frame *f = frameparser_get_frame(fp);
-      printf("-- Completed frame: ");
+      log_printf(LOG_LEVEL_INFO, "-- Completed frame: ");
       frame_dump(f);
       frame_free(f);
     }
