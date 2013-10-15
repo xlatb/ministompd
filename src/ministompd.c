@@ -11,6 +11,8 @@
 
 listener *l;
 
+queue *q;
+
 void loop(void);
 void parse_file(char *filename);
 void handle_connection(connection *c);
@@ -38,6 +40,10 @@ int main(int argc, char *argv[])
     log_printf(LOG_LEVEL_ERROR, "Couldn't listen on socket.\n");
     exit(1);
   }
+
+  // Create queue
+  queueconfig *qc = queueconfig_new();
+  q = queue_new(bytestring_new_from_string("test"), qc);
 
   // Run event loop
   loop();
@@ -168,8 +174,11 @@ void handle_connection_input_frame(connection *c, frame *f)
   }
   else
   {
-    // Echo frame back to client
-    frameserializer_enqueue_frame(c->frameserializer, f);
+    //// Echo frame back to client
+    //frameserializer_enqueue_frame(c->frameserializer, f);
+
+    // Add frame to test queue
+    queue_enqueue(q, f);
   }
 }
 
