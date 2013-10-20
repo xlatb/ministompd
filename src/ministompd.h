@@ -7,6 +7,7 @@ typedef uint64_t queue_local_id;  // The id of a specific frame within a queue
 #include "log.h"
 #include "buffer.h"
 #include "bytestring.h"
+#include "hash.h"
 #include "bytestring_list.h"
 #include "frame.h"
 #include "frameparser.h"

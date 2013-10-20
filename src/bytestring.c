@@ -214,6 +214,14 @@ int bytestring_find_byte(const bytestring *bs, uint8_t byte, int startpos)
   return (p - bs->data);
 }
 
+bool bytestring_equals(const bytestring *bs1, const bytestring *bs2)
+{
+  if (bs1->length != bs2->length)
+    return false;  // Can't be equal if lengths differ
+
+  return (memcmp(bs1->data, bs2->data, bs1->length) == 0);
+}
+
 // Returns true if the bytestring equals the given bytes.
 bool bytestring_equals_bytes(const bytestring *bs, const uint8_t *data, size_t length)
 {

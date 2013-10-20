@@ -24,6 +24,7 @@ bytestring *bytestring_append_bytestring(bytestring *bs, const bytestring *src, 
 bytestring *bytestring_append_printf(bytestring *bs, const char *fmt, ...);
 bytestring *bytestring_append_vprintf(bytestring *bs, const char *fmt, va_list ap);
 int         bytestring_find_byte(const bytestring *b, uint8_t byte, int startpos);
+bool        bytestring_equals(const bytestring *bs1, const bytestring *bs2);
 bool        bytestring_equals_bytes(const bytestring *bs, const uint8_t *data, size_t length);
 bool        bytestring_strtol(const bytestring *bs, int start, int *end, long *value, int base);
 void        bytestring_dump(const bytestring *b);
