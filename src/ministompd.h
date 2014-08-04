@@ -19,6 +19,8 @@ typedef uint64_t queue_local_id;  // The id of a specific frame within a queue
 #include "queueconfig.h"
 #include "storage.h"
 #include "queue.h"
+#include "subscription.h"
+#include "framerouter.h"
 
 #define LIMIT_FRAME_CMD_LINE_LEN      32
 #define LIMIT_FRAME_HEADER_LINE_LEN   8192

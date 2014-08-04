@@ -10,11 +10,18 @@ typedef struct queueconfig queueconfig;
 struct storage;
 typedef struct storage storage;
 
+struct framerouter;
+typedef struct framerouter framerouter;
+
+struct subscription;
+typedef struct subscription subscription;
+
 // *** Queue ***
 struct queue
 {
   bytestring        *name;
   storage           *storage;
+  framerouter       *framerouter;
   const queueconfig *config;
 };
 
@@ -72,6 +79,33 @@ struct queueconfig
 
   int              nack_max;
   qc_reject_action nack_action;
+};
+
+// *** Framerouter ***
+
+struct framerouter
+{
+  int            size;      // Count of subscription slots
+  int            length;    // Count of used subscription slots
+  int            position;  // Index of slot of next subscription to route to
+  subscription **subscriptions;
+};
+
+// *** Subscription ***
+
+typedef enum
+{
+  SUBSCRIPTION_ACK_AUTO,
+  SUBSCRIPTION_ACK_CLIENT,
+  SUBSCRIPTION_ACK_CLIENT_INDIVIDUAL
+} sub_ack_type;
+
+struct subscription
+{
+  queue         *queue;
+  bytestring    *subid;
+  sub_ack_type   ack_type;
+  queue_local_id last_qlid;  // The qlid of the most recent frame consumed by this subscription
 };
 
 #endif
