@@ -7,5 +7,6 @@
 
 framerouter *framerouter_new();
 void framerouter_free(framerouter *fr);
+void framerouter_add_subscription(framerouter *fr, subscription *sub);
 
 #endif

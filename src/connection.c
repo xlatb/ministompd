@@ -35,8 +35,26 @@ connection *connection_new(enum connection_status status, int fd)
   c->outbuffer       = buffer_new(4096);
   c->frameparser     = frameparser_new();
   c->frameserializer = frameserializer_new();
+  c->subscriptionmap = hash_new(16);
 
   return c;
+}
+
+void connection_free(connection *c)
+{
+  // TODO: Assertion failure if we have any subscriptions
+
+  frameparser_free(c->frameparser);
+  frameserializer_free(c->frameserializer);
+  buffer_free(c->inbuffer);
+  buffer_free(c->outbuffer);
+  hash_free(c->subscriptionmap);
+  xfree(c);
+}
+
+bool connection_subscribe(connection *c, subscription *sub)
+{
+  return hash_add(c->subscriptionmap, sub->subid, sub);
 }
 
 void connection_close(connection *c)
@@ -135,14 +153,5 @@ void connection_send_error_message(connection *c, frame *causalframe, bytestring
 void connection_dump(connection *c)
 {
   printf("Connection %p fd %d status %d\n", c, c->fd, c->status);
-}
-
-void connection_free(connection *c)
-{
-  frameparser_free(c->frameparser);
-  frameserializer_free(c->frameserializer);
-  buffer_free(c->inbuffer);
-  buffer_free(c->outbuffer);
-  xfree(c);
 }
 

@@ -1,3 +1,4 @@
+#include "queuetypes.h"
 #include <sys/time.h>  // struct timeval
 
 #ifndef MINISTOMPD_CONNECTION_H
@@ -30,14 +31,16 @@ typedef struct
   buffer                 *outbuffer;        // Output buffer
   frameparser            *frameparser;      // Frame parser
   frameserializer        *frameserializer;  // Frame serializer
+  hash                   *subscriptionmap;  // Subscription map (id -> subscription)
 } connection;
 
 connection  *connection_new(enum connection_status status, int fd);
+void         connection_free(connection *c);
+bool         connection_subscribe(connection *c, subscription *sub);
 void         connection_close(connection *c);
 void         connection_pump_input(connection *c);
 void         connection_pump_output(connection *c);
 void         connection_send_error_message(connection *c, frame *causalframe, bytestring *msg);
 void         connection_dump(connection *c);
-void         connection_free(connection *c);
 
 #endif
