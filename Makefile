@@ -5,7 +5,7 @@ CFLAGS=-std=c99 -g -Wall
 OBJS=ministompd.o frame.o frameparser.o frameserializer.o buffer.o bytestring.o \
      bytestring_list.o headerbundle.o connection.o connectionbundle.o listener.o \
      queueconfig.o storage.o storage_memory.o queue.o alloc.o log.o siphash24.o \
-     hash.o subscription.o framerouter.o
+     hash.o subscription.o framerouter.o queuebundle.o
 
 ministompd : $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o ministompd
@@ -63,6 +63,9 @@ storage_memory.o : src/storage/memory.c src/*.h src/storage/*.h
 
 queue.o : src/queue.c src/*.h
 	$(CC) $(CFLAGS) -c src/queue.c
+
+queuebundle.o : src/queuebundle.c src/*.h
+	$(CC) $(CFLAGS) -c src/queuebundle.c
 
 subscription.o : src/subscription.c src/*.h
 	$(CC) $(CFLAGS) -c src/subscription.c
