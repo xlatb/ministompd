@@ -26,6 +26,7 @@ bool  hash_add(hash *h, const bytestring *key, void *value);
 void *hash_replace(hash *h, const bytestring *key, void *value);
 void *hash_get(hash *h, const bytestring *key);
 void *hash_remove(hash *h, const bytestring *key);
+void *hash_remove_any(hash *h, bytestring **keyptr);
 int   hash_get_itemcount(hash *h);
 void  hash_dump(hash *h);
 

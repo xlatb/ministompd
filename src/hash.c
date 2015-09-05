@@ -8,6 +8,7 @@
 #include <sys/types.h>  // open()
 #include <sys/stat.h>   // open()
 #include <fcntl.h>      // open()
+#include <assert.h>     // assert()
 #include "siphash24.h"
 #include "ministompd.h"
 
@@ -106,7 +107,10 @@ hash *hash_new(int sizehint)
 void hash_free(hash *h)
 {
   // Hash must be empty before calling
-  // TODO
+  assert(h->itemcount == 0);
+
+  xfree(h->buckets);
+  xfree(h);
 }
 
 // Adds a value to the hash. We do not take ownership of the key. The value
@@ -225,8 +229,9 @@ void *hash_remove(hash *h, const bytestring *key)
         else if (item->next)
         {
           // Replace list head
-          xfree(item->next);
+          hash_item *dead = item->next;
           *item = *item->next;
+          xfree(dead);
         }
         else
         {
@@ -257,6 +262,58 @@ void *hash_remove(hash *h, const bytestring *key)
   }
 
   return NULL;
+}
+
+// Removes any given item from the hash, returning its value, or NULL if the
+//  hash was empty.
+// If keyptr is supplied, a pointer to the item's key will be stored there.
+//  The caller then gains ownership of this.
+// If keyptr is not supplied, the key is freed.
+void *hash_remove_any(hash *h, bytestring **keyptr)
+{
+  if (h->itemcount == 0)
+    return NULL;
+
+  // Find any non-empty bucket
+  for (int b = 0; b < h->bucketcount; b++)
+  {
+    hash_item *item = &h->buckets[b];
+
+    // Skip empty buckets
+    if (!item->key)
+      continue;
+
+    // Found one, remember its contents
+    hash_item removed = *item;
+
+    // Delete it from the list
+    if (item->next)
+    {
+      // Replace list head
+      *item = *item->next;
+      xfree(removed.next);
+    }
+    else
+    {
+      // Clear single-element list
+      item->key  = NULL;
+      item->val  = NULL;
+    }
+
+    // If the caller provided a keyptr, give them the key
+    if (keyptr)
+      *keyptr = (bytestring *) removed.key;
+    else
+      bytestring_free((bytestring *) removed.key);
+
+    // Record-keeping
+    h->itemcount--;
+
+    return removed.val;
+  }
+
+  // Should never happen, since itemcount was nonzero
+  abort();
 }
 
 int hash_get_itemcount(hash *h)
