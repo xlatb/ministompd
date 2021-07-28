@@ -231,6 +231,40 @@ bool bytestring_equals_bytes(const bytestring *bs, const uint8_t *data, size_t l
   return (memcmp(bs->data, data, length) == 0);
 }
 
+// Performs a three-way comparison between the bytestring and a C string.
+int bytestring_cmp_string(const bytestring *bs, const char *p2)
+{
+  uint8_t *p1 = bs->data;
+  uint8_t *p1end = bs->data + bs->length;
+
+  // While neither string has terminated, and the bytes match, skip forward
+  while (*p2 && (p1 < p1end) && (*p1 == *p2))
+  {
+    p1++;
+    p2++;
+  }
+
+  if (p1 >= p1end)
+  {
+    if (*p2)
+      return -1;  // Byte string terminated but C string hasn't, C string is greater
+    else
+      return 0;  // Both have terminated
+  }
+  else if (!*p2)
+  {
+    return 1;  // Byte string hasn't terminated but C string has, C string is lesser
+  }
+  else if (*p1 < *p2)
+  {
+    return -1;  // Byte string is greater
+  }
+  else
+  {
+    return 1;  // C string is greater
+  }
+}
+
 // Returns true if we were able to read a numeric string from the bytestring,
 //  starting at the given start position, in the given base. If 'end' is not
 //  NULL, fills in the ending position of the numeric string. The end position

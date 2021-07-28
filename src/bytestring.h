@@ -26,6 +26,7 @@ bytestring *bytestring_append_vprintf(bytestring *bs, const char *fmt, va_list a
 int         bytestring_find_byte(const bytestring *b, uint8_t byte, int startpos);
 bool        bytestring_equals(const bytestring *bs1, const bytestring *bs2);
 bool        bytestring_equals_bytes(const bytestring *bs, const uint8_t *data, size_t length);
+int         bytestring_cmp_string(const bytestring *bs, const char *p2);
 bool        bytestring_strtol(const bytestring *bs, int start, int *end, long *value, int base);
 void        bytestring_dump(const bytestring *b);
 void        bytestring_free(bytestring *b);
