@@ -30,7 +30,7 @@ void bytestring_list_free(bytestring_list *list)
 
 void bytestring_list_ensure_size(bytestring_list *list, size_t size)
 {
-  if (size >= list->size)
+  if (size <= list->size)
     return;
 
   // List is too small, grow it
