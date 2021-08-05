@@ -33,11 +33,15 @@ void connectionbundle_add_connection(connectionbundle *cb, connection *c)
   for (int s = 0; s < cb->size; s++)
   {
     if (cb->connections[s] == NULL)
+    {
       slot = s;
+      break;
+    }
   }
 
   // Add connection to slot
   cb->connections[slot] = c;
+  cb->count++;
 
   return;
 }
@@ -72,6 +76,22 @@ cb_iter connectionbundle_iter_new(connectionbundle *cb)
   return 0;  // Next slot
 }
 
+// Returns the next connection in the bundle, or NULL if none.
+connection *connectionbundle_get_next_connection(connectionbundle *cb, cb_iter *iter)
+{
+  for (int s = *iter; s < cb->size; s++)
+  {
+    connection *c = cb->connections[s];
+    if (c == NULL)
+      continue;
+
+    *iter = s + 1;
+    return c;
+  }
+
+  return NULL;  // No more connections
+}
+
 connection *connectionbundle_get_next_active_connection(connectionbundle *cb, cb_iter *iter, fd_set *readfds, fd_set *writefds)
 {
   for (int s = *iter; s < cb->size; s++)
@@ -102,6 +122,7 @@ connection *connectionbundle_reap_next_connection(connectionbundle *cb, cb_iter 
     {
       *iter = s + 1;
       cb->connections[s] = NULL;
+      cb->count--;
       return c;
     }
   }
