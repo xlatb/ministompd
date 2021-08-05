@@ -102,8 +102,22 @@ bytestring *bytestring_append_byte(bytestring *bs, uint8_t byte)
   return bs;
 }
 
+// Append one bytestring to another.
+bytestring *bytestring_append_bytestring(bytestring *bs, const bytestring *src)
+{
+  // Ensure size
+  if (bs->size < (bs->length + src->length))
+    bytestring_resize(bs, bs->length + src->length);
+
+  // Append data
+  memcpy(bs->data + bs->length, src->data, src->length);
+  bs->length += src->length;
+
+ return bs;
+}
+
 // Append data to one bytestring from another, using the given source position and length.
-bytestring *bytestring_append_bytestring(bytestring *bs, const bytestring *src, int position, size_t length)
+bytestring *bytestring_append_bytestring_fragment(bytestring *bs, const bytestring *src, int position, size_t length)
 {
   // Start position bounds check
   if ((position < 0) || (position >= src->length))
