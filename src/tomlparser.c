@@ -128,8 +128,9 @@ static int tomlparser_peek_match(tomlparser *tp, const char *str)
 }
 
 // Counts the number of upcoming characters, starting from the given position,
-//  which are within the given set.
-static int tomlparser_peek_count_set(tomlparser *tp, int pos, const char *set)
+//  which are within the given set. If max is non-zero, stops counting when
+//  max is reached.
+static int tomlparser_peek_count_set(tomlparser *tp, int pos, int max, const char *set)
 {
   int reqlen = 32;
   tomlparser_ensure_peekbuf_length(tp, reqlen);
@@ -145,6 +146,9 @@ static int tomlparser_peek_count_set(tomlparser *tp, int pos, const char *set)
       break;
 
     count++;
+    if (count == max)
+      break;
+
     if (p == reqlen)
     {
       reqlen *= 2;
@@ -413,7 +417,6 @@ static bool tomlparser_parse_multiline_basic_string(tomlparser *tp, bytestring *
   if ((c == '\x0A') || (c == '\x0D'))
     tomlparser_skip_newline(tp);
 
-  int quotecount = 0;
   while (1)
   {
     c = tomlparser_peek_char(tp);
@@ -424,18 +427,31 @@ static bool tomlparser_parse_multiline_basic_string(tomlparser *tp, bytestring *
     }
     else if (c == '"')
     {
-      quotecount++;
-      tomlparser_consume(tp, 1);
-      if (quotecount == 3)
+      // NOTE: TOML allows runs of one or two quotes in any position,
+      //  including directly preceding the final delimiter.
+      int quotecount = tomlparser_peek_count_set(tp, 0, 6, "\"");
+      if (quotecount >= 6)
+      {
+        tomlparser_record_error(tp, "Invalid run of double quotes within multiline basic string");
+        return false;
+      }
+      else if (quotecount >= 3)
+      {
+        // End of string, possibly with leading extra double quotes
+        int litcount = quotecount - 3;
+        for (int i = 0; i < litcount; i++)
+          bytestring_append_byte(bs, '"');
+        tomlparser_consume(tp, quotecount);
         break;
-      continue;
-    }
-
-    // If quotecount is non-zero, we had earlier quotes that never became a delimiter
-    while (quotecount > 0)
-    {
-      quotecount--;
-      bytestring_append_byte(bs, '"');
+      }
+      else
+      {
+        // One or two embedded quotes, taken as literal
+        for (int i = 0; i < quotecount; i++)
+          bytestring_append_byte(bs, '"');
+        tomlparser_consume(tp, quotecount);
+        continue;
+      }
     }
 
     if ((c == '\x0A') || (c == '\x0D'))
@@ -518,8 +534,8 @@ static bool tomlparser_parse_multiline_literal_string(tomlparser *tp, bytestring
     else if (c == '\'')
     {
       // NOTE: TOML allows runs of one or two quotes in any position,
-      //  including directly preceeding the final delimiter.
-      int quotecount = tomlparser_peek_count_set(tp, 0, "'");
+      //  including directly preceding the final delimiter.
+      int quotecount = tomlparser_peek_count_set(tp, 0, 6, "'");
       if (quotecount >= 6)
       {
         tomlparser_record_error(tp, "Invalid run of single quotes within multiline literal string");
@@ -886,7 +902,7 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
   }
 
   // Dates, times, and integers in alternate bases
-  int digits = tomlparser_peek_count_set(tp, 0, "0123456789");
+  int digits = tomlparser_peek_count_set(tp, 0, 5, "0123456789");
   if ((digits == 2) && (buffer_get_byte(tp->peekbuf, 2) == ':'))
     abort();  // TODO: TOML_TYPE_TIME
   else if ((digits == 4) && (buffer_get_byte(tp->peekbuf, 4) == '-'))
@@ -913,7 +929,7 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
     digitstart++;
 
   // If we have following digits/underscores, skip over a run of them
-  digits = tomlparser_peek_count_set(tp, digitstart, "0123456789_");
+  digits = tomlparser_peek_count_set(tp, digitstart, 0, "0123456789_");
   if (digits)
   {
     tomlparser_ensure_peekbuf_length(tp, digitstart + digits + 1);
