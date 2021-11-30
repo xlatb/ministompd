@@ -2,16 +2,25 @@ CC=gcc
 # gdb (Ubuntu 9.2-0ubuntu1~20.04) 9.2 is printing function arguments incorrectly without -fcf-protection=none
 # https://stackoverflow.com/questions/64697087/gdb-shows-incorrect-arguments-of-functions-for-stack-frames
 # Apparently fixed in gdb 10.1 and later.
+#CFLAGS=-std=c99 -O0 -g -fcf-protection=none -D_POSIX_C_SOURCE=200809L -Wall -Werror=implicit-function-declaration
 CFLAGS=-std=c99 -O0 -g -fcf-protection=none -D_POSIX_C_SOURCE=200809L -Wall
 #CFLAGS=-std=c99 -O2 -Wall
+
+LDFLAGS=-lm
 
 OBJS=ministompd.o frame.o frameparser.o frameserializer.o buffer.o bytestring.o \
      bytestring_list.o headerbundle.o connection.o connectionbundle.o listener.o \
      queueconfig.o storage.o storage_memory.o queue.o alloc.o log.o siphash24.o \
-     hash.o subscription.o framerouter.o queuebundle.o list.o printbuf.o
+     hash.o subscription.o framerouter.o queuebundle.o list.o printbuf.o \
+     linereader.o configreader.o unicode.o tomlparser.o tomlvalue.o
+
+TOMLDUMP_OBJS=tomlparser.o tomlvalue.o unicode.o buffer.o bytestring.o list.o hash.o siphash24.o alloc.o tomldump.o log.o
 
 ministompd : $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o ministompd
+	$(CC) $(CFLAGS) $(OBJS) -o ministompd $(LDFLAGS)
+
+tomldump : $(TOMLDUMP_OBJS)
+	$(CC) $(CFLAGS) $(TOMLDUMP_OBJS) -o tomldump $(LDFLAGS)
 
 ministompd.o : src/ministompd.c src/*.h
 	$(CC) $(CFLAGS) -c src/ministompd.c
@@ -85,5 +94,24 @@ list.o : src/list.c
 printbuf.o : src/printbuf.c
 	$(CC) $(CFLAGS) -c src/printbuf.c
 
+linereader.o : src/linereader.c
+	$(CC) $(CFLAGS) -c src/linereader.c
+
+configreader.o : src/configreader.c
+	$(CC) $(CFLAGS) -c src/configreader.c
+
+tomlparser.o : src/tomlparser.c
+	$(CC) $(CFLAGS) -c src/tomlparser.c
+
+tomlvalue.o : src/tomlvalue.c
+	$(CC) $(CFLAGS) -c src/tomlvalue.c
+
+unicode.o : src/unicode.c
+	$(CC) $(CFLAGS) -c src/unicode.c
+
+tomldump.o : src/tomldump.c
+	$(CC) $(CFLAGS) -c src/tomldump.c
+
 clean :
 	rm -f ministompd $(OBJS)
+	rm -f tomldump $(TOMLDUMP_OBJS)
