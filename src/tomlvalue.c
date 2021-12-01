@@ -108,6 +108,13 @@ void tomlvalue_dump(tomlvalue *v, int indent)
   }
 }
 
+tomlvalue *tomlvalue_new(void)
+{
+  tomlvalue *v = xmalloc(sizeof(struct tomlvalue));
+  v->type = TOML_TYPE_NONE;
+  return v;
+}
+
 tomlvalue *tomlvalue_new_table(void)
 {
   struct tomlvalue *v = xmalloc(sizeof(struct tomlvalue));

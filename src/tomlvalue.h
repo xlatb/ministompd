@@ -44,6 +44,7 @@ typedef struct tomlvalue tomlvalue;
 
 void tomlvalue_free(tomlvalue *v);
 void tomlvalue_dump(tomlvalue *v, int indent);
+tomlvalue *tomlvalue_new(void);
 tomlvalue *tomlvalue_new_table(void);
 tomlvalue *tomlvalue_new_array(void);
 

@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <math.h>  // INFINITY, NAN, pow()
 
+static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v);
+
 // Frees a 'keypath', which is just a list of bytestrings.
 static void toml_keypath_free(list *keypath)
 {
@@ -275,6 +277,27 @@ static bool tomlparser_skip_line(tomlparser *tp)
   }
 
   return false;  // EOF
+}
+
+// Skips whitespace, optionally containing newlines and embedded comments
+static void tomlparser_skip_newline_whitespace(tomlparser *tp)
+{
+  tomlparser_skip_whitespace(tp);
+
+  int c;
+  while ((c = tomlparser_peek_char(tp)) != EOF)
+  {
+    if (c == '#')
+      tomlparser_skip_line(tp);
+    else if ((c == '\x0A') || (c == '\x0D'))
+      tomlparser_skip_newline(tp);
+    else
+      break;
+
+    tomlparser_skip_whitespace(tp);
+  }
+
+  return;
 }
 
 // Expects end of line, optionally with a trailing comment
@@ -879,6 +902,57 @@ static bool tomlparser_parse_key(tomlparser *tp, list **keypath)
   return success;
 }
 
+static bool tomlparser_parse_inline_array_value(tomlparser *tp, tomlvalue *v)
+{
+  if (!tomlparser_consume_match(tp, "["))
+    abort();
+
+  v->type = TOML_TYPE_ARRAY;
+  v->u.arrayval = list_new(8);
+
+  tomlparser_skip_newline_whitespace(tp);
+
+  int c;
+  while ((c = tomlparser_peek_char(tp)) != EOF)
+  {
+    if (c == ']')
+      break;
+
+    tomlvalue *ev = tomlvalue_new();
+    if (!tomlparser_parse_value(tp, ev))
+    {
+      tomlparser_record_error(tp, "Expected value");
+      tomlvalue_free(ev);
+      return false;
+    }
+
+    list_push(v->u.arrayval, ev);
+
+    tomlparser_skip_newline_whitespace(tp);
+
+    c = tomlparser_peek_char(tp);
+    if (c == ']')
+      break;
+    else if (c == ',')
+      tomlparser_consume(tp, 1);
+    else
+    {
+      tomlparser_record_error(tp, "Expected ',' or ']' after array element");
+      return false;
+    }
+
+    tomlparser_skip_newline_whitespace(tp);
+  }
+
+  if (!tomlparser_consume_match(tp, "]"))
+  {
+    tomlparser_record_error(tp, "Expected ] at end of array");
+    return false;
+  }
+
+  return true;
+}
+
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
 {
   int c = tomlparser_peek_char(tp);
@@ -899,7 +973,7 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
     return true;
   }
   else if (c == '[')
-    abort();  // TODO: TOML_TYPE_ARRAY
+    return tomlparser_parse_inline_array_value(tp, v);
   else if (c == '{')
     abort();  // TODO: TOML_TYPE_TABLE
   else if (tomlparser_consume_match(tp, "true"))
@@ -1112,9 +1186,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
 
   tomlparser_skip_whitespace(tp);
 
-  tomlvalue *v = xmalloc(sizeof(tomlvalue));
-  v->type = TOML_TYPE_NONE;
-
+  tomlvalue *v = tomlvalue_new();
   if (!tomlparser_parse_value(tp, v))
   {
     tomlparser_record_error(tp, "Expected value");
