@@ -753,12 +753,12 @@ static bool tomlparser_parse_float_frac(tomlparser *tp, double *fracptr)
   double frac = 0.0;
 
   int d, p;
-  for (p = 0; tomlparser_get_digit(tp, &d, 10); p++)
+  for (p = 1; tomlparser_get_digit(tp, &d, 10); p++)
   {
     frac += (d * pow(10, -p));
   }
 
-  if (p == 0)
+  if (p == 1)
   {
     tomlparser_record_error(tp, "Expected digit after decimal point");
     return false;
@@ -775,11 +775,25 @@ static bool tomlparser_parse_float(tomlparser *tp, double *floatptr)
   if (tomlparser_parse_float_special(tp, floatptr))
     return true;
 
+  // Get sign, if any
+  // NOTE: We can't let tomlparser_parse_integer_decimal() handle the sign
+  //  because if the integer part is zero, the sign is lost.
+  int c = tomlparser_peek_char(tp);
+  bool negative = false;
+  if ((c == '-') || (c == '+'))
+  {
+    negative = (c == '-');
+  }
+
   // Get integer part
   // float-int-part = dec-int
   int64_t intpart;
   if (!tomlparser_parse_integer_decimal(tp, &intpart))
     return false;
+
+  // Convert integer part to absolute value
+  if (intpart < 0)
+    intpart = -intpart;
 
   // Get fractional part, if any
   double fracpart = 0;
@@ -793,21 +807,21 @@ static bool tomlparser_parse_float(tomlparser *tp, double *floatptr)
   // exp = "e" float-exp-part
   // float-exp-part = [ minus / plus ] zero-prefixable-int
   int64_t exppart = 0;
-  if (tomlparser_consume_match(tp, "e"))
+  if (tomlparser_consume_match(tp, "e") || tomlparser_consume_match(tp, "E"))
   {
-    bool negative = false;
+    bool expnegative = false;
     int c = tomlparser_peek_char(tp);
     if ((c == '-') || (c == '+'))
     {
       tomlparser_consume(tp, 1);
-      negative = (c == '-');
+      expnegative = (c == '-');
     }
 
-    if (!tomlparser_parse_integer_base(tp, &exppart, 10, negative))
+    if (!tomlparser_parse_integer_base(tp, &exppart, 10, expnegative))
       return false;
   }
 
-  double value = (intpart + fracpart) * pow(10, exppart);
+  double value = (negative ? -1.0 : 1.0) * (intpart + fracpart) * pow(10, exppart);
   *floatptr = value;
   return true;
 }
@@ -933,10 +947,21 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
   if (digits)
   {
     tomlparser_ensure_peekbuf_length(tp, digitstart + digits + 1);
-    char c = buffer_get_byte(tp->peekbuf, digitstart + digits + 1);
+    char c = buffer_get_byte(tp->peekbuf, digitstart + digits);
 
     if ((c == '.') || (c == 'e') || (c == 'E'))
-      abort();  // TODO: TOML_TYPE_FLOAT
+    {
+      double value;
+      if (!tomlparser_parse_float(tp, &value))
+      {
+        tomlparser_record_error(tp, "Could not parse floating-point value");
+        return false;
+      }
+
+      v->type = TOML_TYPE_FLOAT;
+      v->u.floatval = value;
+      return true;
+    }
     else
     {
       // Decimal integer
