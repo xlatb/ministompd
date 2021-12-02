@@ -10,6 +10,7 @@
 #include <math.h>  // INFINITY, NAN, pow()
 
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v);
+static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context);
 
 // Frees a 'keypath', which is just a list of bytestrings.
 static void toml_keypath_free(list *keypath)
@@ -953,6 +954,49 @@ static bool tomlparser_parse_inline_array_value(tomlparser *tp, tomlvalue *v)
   return true;
 }
 
+static bool tomlparser_parse_inline_table_value(tomlparser *tp, tomlvalue *v)
+{
+  if (!tomlparser_consume_match(tp, "{"))
+    abort();
+
+  v->type = TOML_TYPE_TABLE;
+  v->u.tableval = hash_new(8);
+
+  tomlparser_skip_whitespace(tp);
+
+  if (tomlparser_consume_match(tp, "}"))
+    return true;  // Empty inline table
+
+  int c;
+  while ((c = tomlparser_peek_char(tp)) != EOF)
+  {
+    tomlparser_parse_assignment(tp, v);
+
+    tomlparser_skip_whitespace(tp);
+
+    c = tomlparser_peek_char(tp);
+    if (c == '}')
+      break;
+    else if (c == ',')
+      tomlparser_consume(tp, 1);
+    else
+    {
+      tomlparser_record_error(tp, "Expected ',' or '}' after inline table element");
+      return false;
+    }
+
+    tomlparser_skip_whitespace(tp);
+  }
+
+  if (!tomlparser_consume_match(tp, "}"))
+  {
+    tomlparser_record_error(tp, "Expected } at end of inline table");
+    return false;
+  }
+
+  return true;
+}
+
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
 {
   int c = tomlparser_peek_char(tp);
@@ -975,7 +1019,7 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
   else if (c == '[')
     return tomlparser_parse_inline_array_value(tp, v);
   else if (c == '{')
-    abort();  // TODO: TOML_TYPE_TABLE
+    return tomlparser_parse_inline_table_value(tp, v);
   else if (tomlparser_consume_match(tp, "true"))
   {
     v->type = TOML_TYPE_BOOL;
@@ -1166,7 +1210,7 @@ static bool tomlparser_parse_header(tomlparser *tp)
     return tomlparser_parse_standard_table_header(tp);
 }
 
-static bool tomlparser_parse_assignment(tomlparser *tp)
+static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context)
 {
   list *keypath;
   if (!tomlparser_parse_key(tp, &keypath))
@@ -1181,6 +1225,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
   if (c != '=')
   {
     tomlparser_record_error(tp, "Expected '=' after key path");
+    toml_keypath_free(keypath);
     return false;
   }
 
@@ -1190,19 +1235,15 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
   if (!tomlparser_parse_value(tp, v))
   {
     tomlparser_record_error(tp, "Expected value");
+    toml_keypath_free(keypath);
     tomlvalue_free(v);
     return false;
   }
 
-  if (!tomlparser_end_line(tp))
-  {
-    tomlvalue_free(v);
-    return false;
-  }
-
-  tomlvalue *node = tomlparser_walk(tp, tp->current, keypath, -1);
+  tomlvalue *node = tomlparser_walk(tp, context, keypath, -1);
   if (!node)
   {
+    toml_keypath_free(keypath);
     tomlvalue_free(v);
     return false;
   }
@@ -1211,6 +1252,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
   if (node->type != TOML_TYPE_TABLE)
   {
     tomlparser_record_error(tp, "Attempt to store value in non-table");
+    toml_keypath_free(keypath);
     tomlvalue_free(v);
     return false;
   }
@@ -1221,6 +1263,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
   if (old)
   {
     tomlparser_record_error(tp, "Attempt to overwrite populated key");
+    toml_keypath_free(keypath);
     tomlvalue_free(v);
     return false;
   }
@@ -1228,6 +1271,17 @@ static bool tomlparser_parse_assignment(tomlparser *tp)
   // Add key/value to table
   if (!hash_add(node->u.tableval, key, v))
     abort();
+
+  return true;
+}
+
+static bool tomlparser_parse_assignment_statement(tomlparser *tp)
+{
+  if (!tomlparser_parse_assignment(tp, tp->current))
+    return false;
+
+  if (!tomlparser_end_line(tp))
+    return false;
 
   return true;
 }
@@ -1254,7 +1308,7 @@ bool tomlparser_parse_statement(tomlparser *tp)
   {
     return tomlparser_parse_header(tp);
   }
-  else if (tomlparser_parse_assignment(tp))
+  else if (tomlparser_parse_assignment_statement(tp))
     return true;
 
   return false;
