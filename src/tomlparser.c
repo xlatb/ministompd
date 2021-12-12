@@ -11,6 +11,7 @@
 
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v);
 static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context);
+static bool tomlparser_get_digits(tomlparser *tp, int base, int count, uint64_t *valueptr);
 
 // Frees a 'keypath', which is just a list of bytestrings.
 static void toml_keypath_free(list *keypath)
@@ -324,35 +325,6 @@ static bool tomlparser_end_line(tomlparser *tp)
   return false;
 }
 
-
-// TODO: Leverage tomlparser_get_digit()?
-static bool tomlparser_parse_hex_number(tomlparser *tp, int digits, uint32_t *valueptr)
-{
-  uint32_t value = 0;
-  for (int d = 0; d < digits; d++)
-  {
-    int c = tomlparser_get_char(tp);
-
-    int v;
-    if ((c >= '0') && (c <= '9'))
-      v = c - '0';
-    else if ((c >= 'a') && (c <= 'f'))
-      v = (c - 'a') + 10;
-    else if ((c >= 'A') && (c <= 'F'))
-      v = (c - 'A') + 10;
-    else
-    {
-      tomlparser_record_error(tp, "Illegal character in hex digit string");
-      return false;
-    }
-
-    value = (value << 4) | v;
-  }
-
-  *valueptr = value;
-  return true;
-}
-
 // NOTE: Assumes the leading backslash has already been consumed.
 static bool tomlparser_parse_basic_string_escape(tomlparser *tp, bytestring *bs)
 {
@@ -373,9 +345,12 @@ static bool tomlparser_parse_basic_string_escape(tomlparser *tp, bytestring *bs)
     bytestring_append_byte(bs, '\\');
   else if ((c == 'u') || (c == 'U'))
   {
-    uint32_t ucs4;
-    if (!tomlparser_parse_hex_number(tp, (c == 'u') ? 4 : 8, &ucs4))
+    uint64_t ucs4;
+    if (!tomlparser_get_digits(tp, 16, (c == 'u') ? 4 : 8, &ucs4))
+    {
+      tomlparser_record_error(tp, "Insufficient hex digits for unicode code point escape sequence");
       return false;
+    }
 
     uint8_t utf8[4];
     size_t len = unicode_ucs4_to_utf8(ucs4, &utf8);
@@ -641,6 +616,20 @@ static bool tomlparser_parse_bare_key(tomlparser *tp, bytestring *bs)
   return (len > 0);
 }
 
+static bool tomlparser_get_sign(tomlparser *tp, bool *signptr)
+{
+  int c = tomlparser_peek_char(tp);
+
+  if ((c == '-') || (c == '+'))
+  {
+    *signptr = (c == '-');
+    tomlparser_consume(tp, 1);
+    return true;
+  }
+
+  return false;
+}
+
 static bool tomlparser_get_digit(tomlparser *tp, int *digitptr, int base)
 {
   int c = tomlparser_peek_char(tp);
@@ -660,6 +649,25 @@ static bool tomlparser_get_digit(tomlparser *tp, int *digitptr, int base)
 
   tomlparser_consume(tp, 1);
   *digitptr = d;
+  return true;
+}
+
+// Reads the given number of digits in the given base.
+// Returns false if the requested number of digits was not available.
+static bool tomlparser_get_digits(tomlparser *tp, int base, int count, uint64_t *valueptr)
+{
+  uint64_t value = 0;
+
+  for (int d = 0; d < count; d++)
+  {
+    int v;
+    if (!tomlparser_get_digit(tp, &v, base))
+      return false;
+
+    value = (value * base) + v;
+  }
+
+  *valueptr = value;
   return true;
 }
 
@@ -997,6 +1005,241 @@ static bool tomlparser_parse_inline_table_value(tomlparser *tp, tomlvalue *v)
   return true;
 }
 
+// time-offset    = "Z" / time-numoffset
+// time-numoffset = ( "+" / "-" ) time-hour ":" time-minute
+static bool tomlparser_parse_rfc3339_tzoffset(tomlparser *tp, bool *tzsignptr, int *tzminutesptr)
+{
+  if (tomlparser_consume_match(tp, "Z") || tomlparser_consume_match(tp, "z"))
+  {
+    *tzsignptr    = false;
+    *tzminutesptr = 0;
+    return true;
+  }
+
+  bool tzsign = false;
+  if (!tomlparser_get_sign(tp, &tzsign))
+    abort();
+
+  uint64_t hours;
+  if (!tomlparser_get_digits(tp, 10, 2, &hours))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for timezone offset hours");
+    return false;
+  }
+
+  if (!tomlparser_consume_match(tp, ":"))
+  {
+    tomlparser_record_error(tp, "Expected ':' after timezone hours");
+    return false;
+  }
+
+  uint64_t minutes;
+  if (!tomlparser_get_digits(tp, 10, 2, &minutes))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for timezone offset minutes");
+    return false;
+  }
+
+  int tzminutes = (tzsign ? -1 : 1) * (hours * 60) + minutes;
+  *tzsignptr    = tzsign;
+  *tzminutesptr = tzminutes;
+  return true;
+}
+
+// full-date      = date-fullyear "-" date-month "-" date-mday
+// date-fullyear  = 4DIGIT
+// date-month     = 2DIGIT  ; 01-12
+// date-mday      = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on month/year
+static bool tomlparser_parse_rfc3339_date(tomlparser *tp, int *yearsptr, int *monthsptr, int *daysptr)
+{
+  uint64_t years;
+  if (!tomlparser_get_digits(tp, 10, 4, &years))
+  {
+    tomlparser_record_error(tp, "Expected 4 digits for year");
+    return false;
+  }
+
+  if (!tomlparser_consume_match(tp, "-"))
+  {
+    tomlparser_record_error(tp, "Expected '-' after year");
+    return false;
+  }
+
+  uint64_t months;
+  if (!tomlparser_get_digits(tp, 10, 2, &months))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for month");
+    return false;
+  }
+
+  if (!tomlparser_consume_match(tp, "-"))
+  {
+    tomlparser_record_error(tp, "Expected '-' after month");
+    return false;
+  }
+
+  uint64_t days;
+  if (!tomlparser_get_digits(tp, 10, 2, &days))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for day");
+    return false;
+  }
+
+  *yearsptr  = years;
+  *monthsptr = months;
+  *daysptr   = days;
+
+  return true;
+}
+
+// partial-time    = time-hour ":" time-minute ":" time-second [time-secfrac]
+// time-hour       = 2DIGIT  ; 00-23
+// time-minute     = 2DIGIT  ; 00-59
+// time-second     = 2DIGIT  ; 00-58, 00-59, 00-60 based on leap second
+//                           ; rules
+// time-secfrac    = "." 1*DIGIT
+static bool tomlparser_parse_rfc3339_time(tomlparser *tp, int *hoursptr, int *minutesptr, int *secondsptr, int *msecsptr)
+{
+  uint64_t hours;
+  if (!tomlparser_get_digits(tp, 10, 2, &hours))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for hours");
+    return false;
+  }
+  else if (hours >= 24)
+  {
+    tomlparser_record_error(tp, "Hours out of range");
+    return false;
+  }
+
+  if (!tomlparser_consume_match(tp, ":"))
+  {
+    tomlparser_record_error(tp, "Expected ':' after hours");
+    return false;
+  }
+
+  uint64_t minutes;
+  if (!tomlparser_get_digits(tp, 10, 2, &minutes))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for minutes");
+    return false;
+  }
+  else if (minutes >= 60)
+  {
+    tomlparser_record_error(tp, "Minutes out of range");
+    return false;
+  }
+
+  if (!tomlparser_consume_match(tp, ":"))
+  {
+    tomlparser_record_error(tp, "Expected ':' after hours");
+    return false;
+  }
+
+  uint64_t seconds;
+  if (!tomlparser_get_digits(tp, 10, 2, &seconds))
+  {
+    tomlparser_record_error(tp, "Expected 2 digits for seconds");
+    return false;
+  }
+  else if (seconds >= 61)  // Seconds may go up to 60 due to leap seconds
+  {
+    tomlparser_record_error(tp, "Seconds out of range");
+    return false;
+  }
+
+  *hoursptr   = hours;
+  *minutesptr = minutes;
+  *secondsptr = seconds;
+
+  if (!tomlparser_consume_match(tp, "."))
+  {
+    *msecsptr   = 0;
+    return true;
+  }
+
+  int fracdigits = tomlparser_peek_count_set(tp, 0, 0, "0123456789");
+  if (fracdigits < 1)
+  {
+    tomlparser_record_error(tp, "Expected digits after decimal point");
+    return false;
+  }
+
+  uint64_t frac;
+  if (fracdigits > TOML_TIME_FRAC_DIGITS)
+  {
+    // There are more digits than we would like to store, so we just read
+    //  the significant ones.
+    if (!tomlparser_get_digits(tp, 10, TOML_TIME_FRAC_DIGITS, &frac))
+      abort();
+
+    // Throw away the remaining unused digits
+    tomlparser_consume(tp, fracdigits - TOML_TIME_FRAC_DIGITS);
+  }
+  else
+  {
+    // There are <= the preferred number of digits, so read them all
+    if (!tomlparser_get_digits(tp, 10, fracdigits, &frac))
+      abort();
+
+    // Pad on the right with zeroes
+    for (int i = fracdigits; i < TOML_TIME_FRAC_DIGITS; i++)
+      frac *= 10;
+  }
+
+  *msecsptr = frac;
+  return true;
+}
+
+// Note: We know the value contains a date, but we don't know which
+//  specific type yet.
+// local-date = full-date
+// local-date-time = full-date time-delim partial-time
+// offset-date-time = full-date time-delim full-time
+static bool tomlparser_parse_date_value(tomlparser *tp, tomlvalue *v)
+{
+  int year, month, day;
+  if (!tomlparser_parse_rfc3339_date(tp, &year, &month, &day))
+    return false;
+
+  int c = tomlparser_peek_char(tp);
+  if ((c != 'T') && (c != 't') && !((c == ' ') && tomlparser_peek_count_set(tp, 1, 1, "0123456789")))
+  {
+    // Date alone
+    struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = year, .month = month, .day = day};
+    v->type = TOML_TYPE_DATE;
+    tomlvalue_set_datetime(v, &dt);
+    return true;
+  }
+
+  tomlparser_consume(tp, 1);  // Eat delimiter
+
+  int hour, minute, second, msec;
+  if (!tomlparser_parse_rfc3339_time(tp, &hour, &minute, &second, &msec))
+      return false;
+
+  c = tomlparser_peek_char(tp);
+  if ((c != 'Z') && (c != 'z') && (c != '+') && (c != '-'))
+  {
+    // Date and time with no timezone
+    struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second, .msec = msec};
+    v->type = TOML_TYPE_DATETIME;
+    tomlvalue_set_datetime(v, &dt);
+    return true;
+  }
+
+  bool tzneg;
+  int tzminutes;
+  if (!tomlparser_parse_rfc3339_tzoffset(tp, &tzneg, &tzminutes))
+    return false;
+
+  // Date and time with timezone
+  struct tomlvalue_unpacked_datetime dt = {.tzneg = tzneg, .tzminutes = tzminutes, .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second, .msec = msec};
+  v->type = TOML_TYPE_DATETIME_TZ;
+  tomlvalue_set_datetime(v, &dt);
+  return true;
+}
+
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
 {
   int c = tomlparser_peek_char(tp);
@@ -1036,9 +1279,19 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
   // Dates, times, and integers in alternate bases
   int digits = tomlparser_peek_count_set(tp, 0, 5, "0123456789");
   if ((digits == 2) && (buffer_get_byte(tp->peekbuf, 2) == ':'))
-    abort();  // TODO: TOML_TYPE_TIME
+  {
+    int hour, minute, second, msec;
+    if (!tomlparser_parse_rfc3339_time(tp, &hour, &minute, &second, &msec))
+      return false;
+
+    struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = TOML_TIME_EPOCH_YEAR, .month = 1, .day = 1, .hour = hour, .minute = minute, .second = second, .msec = msec};
+
+    v->type = TOML_TYPE_TIME;
+    tomlvalue_set_datetime(v, &dt);
+    return true;
+  }
   else if ((digits == 4) && (buffer_get_byte(tp->peekbuf, 4) == '-'))
-    abort();  // TODO: TOML_TYPE_DATE
+    return tomlparser_parse_date_value(tp, v);
   else if ((digits == 1) && (c == '0'))
   {
     char c2 = buffer_get_byte(tp->peekbuf, 1);
