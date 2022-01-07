@@ -26,7 +26,9 @@ struct tomlparser
 typedef struct tomlparser tomlparser;
 
 tomlparser        *tomlparser_new(void);
+int                tomlparser_get_error_count(tomlparser *tp);
 struct toml_error *tomlparser_pull_error(tomlparser *tp);
+tomlvalue         *tomlparser_pull_data(tomlparser *tp);
 void               tomlparser_set_file(tomlparser *tp, FILE *f);
 bool               tomlparser_parse_statement(tomlparser *tp);
 

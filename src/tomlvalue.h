@@ -67,6 +67,9 @@ enum tomlvalue_type
 #define TOML_TYPESET_DATETIME  0x10
 #define TOML_TYPESET_CONTAINER 0x20
 
+#define TOML_FLAG_AUTOVIVIFIED 0x01
+#define TOML_FLAG_CLOSED       0x02
+
 struct tomlvalue
 {
 //  enum tomlvalue_type type;
@@ -81,6 +84,7 @@ struct tomlvalue
     struct tomlvalue_packed_datetime datetimeval;
   } u;
   uint8_t type;
+  uint8_t flags;
 };
 
 typedef struct tomlvalue tomlvalue;
@@ -92,6 +96,8 @@ tomlvalue *tomlvalue_new(void);
 tomlvalue *tomlvalue_new_table(void);
 tomlvalue *tomlvalue_new_array(void);
 
+const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked);
+
 bool tomlvalue_get_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked);
 bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked);
 
@@ -99,5 +105,36 @@ bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *un
 //bool tomlvalue_set_time(tomlvalue *v, int hours, int minutes, int seconds, int msecs);
 bool tomlvalue_get_tzoffset(tomlvalue *v, bool *negative, int *minutes);
 //bool tomlvalue_set_tzoffset(tomlvalue *v, bool negative, int minutes);
+
+static inline tomlvalue *tomlvalue_get_hash_element(tomlvalue *v, bytestring *key)
+{
+  if (v->type != TOML_TYPE_TABLE)
+    return NULL;
+
+  return hash_get(v->u.tableval, key);
+}
+
+static inline int tomlvalue_get_array_length(tomlvalue *v)
+{
+  if (v->type != TOML_TYPE_ARRAY)
+    return 0;
+
+  return list_get_length(v->u.arrayval);
+}
+
+static inline tomlvalue *tomlvalue_get_array_element(tomlvalue *v, int index)
+{
+  if (v->type != TOML_TYPE_ARRAY)
+    return NULL;
+
+  int len = list_get_length(v->u.arrayval);
+  if ((index < 0) || (index >= len))
+    return NULL;
+
+  return list_get_item(v->u.arrayval, index);
+}
+
+void tomlvalue_set_flag(tomlvalue *v, int flag, bool value);
+bool tomlvalue_get_flag(tomlvalue *v, int flag);
 
 #endif

@@ -287,6 +287,7 @@ tomlvalue *tomlvalue_new(void)
 {
   tomlvalue *v = xmalloc(sizeof(struct tomlvalue));
   v->type = TOML_TYPE_NONE;
+  v->flags = 0;
   return v;
 }
 
@@ -294,6 +295,7 @@ tomlvalue *tomlvalue_new_table(void)
 {
   struct tomlvalue *v = xmalloc(sizeof(struct tomlvalue));
   v->type = TOML_TYPE_TABLE;
+  v->flags = 0;
   v->u.tableval = hash_new(8);
   return v;
 }
@@ -302,6 +304,7 @@ tomlvalue *tomlvalue_new_array(void)
 {
   struct tomlvalue *v = xmalloc(sizeof(struct tomlvalue));
   v->type = TOML_TYPE_ARRAY;
+  v->flags = 0;
   v->u.arrayval = list_new(8);
   return v;
 }
@@ -371,6 +374,26 @@ bool tomlvalue_get_date(tomlvalue *v, int *year, int *month, int *day)
   return true;
 }
 */
+
+const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked)
+{
+  if ((unpacked->year < 1) || (unpacked->year > 9999))
+    return "Year out of range 1..9999";
+  else if ((unpacked->month < 1) || (unpacked->month > 12))
+    return "Month out of range 1..12";
+  else if ((unpacked->day < 1) || (unpacked->day > days_in_month(unpacked->year, unpacked->month)))
+    return "Day of month out of range";
+  else if ((unpacked->hour < 0) || (unpacked->hour > 23))
+    return "Hour out of range 0..23";
+  else if ((unpacked->minute < 0) || (unpacked->minute > 59))
+    return "Minute out of range 0..59";
+  else if ((unpacked->second < 0) || (unpacked->second > 60))  // Allow for 60th second (leap second)
+    return "Second out of range 0..60";
+  else if ((unpacked->msec < 0) || (unpacked->msec > 999))
+    return "Milliseconds out of range 0..999";
+
+  return NULL;
+}
 
 bool tomlvalue_get_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked)
 {
@@ -481,3 +504,13 @@ bool tomlvalue_set_tzoffset(tomlvalue *v, bool negative, int minutes)
   return true;
 }
 */
+
+void tomlvalue_set_flag(tomlvalue *v, int flag, bool value)
+{
+  v->flags = (v->flags & ~flag) | (value ? flag : 0);
+}
+
+bool tomlvalue_get_flag(tomlvalue *v, int flag)
+{
+  return (v->flags & flag) != 0;
+}

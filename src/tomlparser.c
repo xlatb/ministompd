@@ -33,6 +33,7 @@ tomlparser *tomlparser_new(void)
 
   tp->file    = NULL;
   tp->line    = 0;
+
   tp->peekbuf = buffer_new(64);
 
   tp->errors  = NULL;
@@ -53,6 +54,14 @@ static void tomlparser_clear_errors(tomlparser *tp)
     xfree(err);
 
   return;
+}
+
+int tomlparser_get_error_count(tomlparser *tp)
+{
+  if (!tp->errors)
+    return 0;
+
+  return list_get_length(tp->errors);
 }
 
 // Returns the next error, if there is one. Caller should xfree() if not NULL.
@@ -77,6 +86,23 @@ static void tomlparser_record_error(tomlparser *tp, const char *message)
   list_push(tp->errors, err);
 
   return;
+}
+
+tomlvalue *tomlparser_pull_data(tomlparser *tp)
+{
+  tomlvalue *v = tp->root;
+
+  tp->file    = NULL;
+  tp->line    = 0;
+
+  buffer_clear(tp->peekbuf);
+
+  tp->root    = tomlvalue_new_table();
+  tp->current = tp->root;
+
+  tomlparser_clear_errors(tp);
+
+  return v;
 }
 
 void tomlparser_set_file(tomlparser *tp, FILE *f)
@@ -176,6 +202,23 @@ static int tomlparser_get_char(tomlparser *tp)
   return c;
 }
 
+static void tomlparser_consume(tomlparser *tp, int count)
+{
+  buffer_consume(tp->peekbuf, count);
+}
+
+static bool tomlparser_consume_char(tomlparser *tp, const char c)
+{
+  if (tomlparser_peek_char(tp) == c)
+  {
+    tomlparser_consume(tp, 1);
+    return true;
+  }
+
+  return false;
+}
+
+// TODO: Rename to tomlparser_consume_string
 static bool tomlparser_consume_match(tomlparser *tp, const char *str)
 {
   int len;
@@ -184,11 +227,6 @@ static bool tomlparser_consume_match(tomlparser *tp, const char *str)
 
   buffer_consume(tp->peekbuf, len);
   return true;
-}
-
-static void tomlparser_consume(tomlparser *tp, int count)
-{
-  buffer_consume(tp->peekbuf, count);
 }
 
 static tomlvalue *tomlparser_walk(tomlparser *tp, tomlvalue *start, list *keypath, int depth)
@@ -211,12 +249,25 @@ static tomlvalue *tomlparser_walk(tomlparser *tp, tomlvalue *start, list *keypat
       return NULL;
     }
 
-    tomlvalue *subvalue = hash_get(node->u.tableval, key);
+    tomlvalue *subvalue = tomlvalue_get_hash_element(node, key);
     if (subvalue == NULL)
     {
       // Auto-vivify table
       subvalue = tomlvalue_new_table();
+      tomlvalue_set_flag(subvalue, TOML_FLAG_AUTOVIVIFIED, true);
       hash_add(node->u.tableval, key, subvalue);
+    }
+    else if (subvalue->type == TOML_TYPE_ARRAY)
+    {
+      // A named array refers to its final element
+      int len = tomlvalue_get_array_length(subvalue);
+      if (len == 0)
+      {
+        tomlparser_record_error(tp, "Attempt to walk into zero-length array");
+        return NULL;
+      }
+
+      subvalue = tomlvalue_get_array_element(subvalue, len - 1);
     }
 
     node = subvalue;
@@ -262,23 +313,39 @@ static bool tomlparser_skip_newline(tomlparser *tp)
   abort();  // Expected newline
 }
 
-// Skip until LF (0x0A) or CRLF (0x0D 0x0A).
-static bool tomlparser_skip_line(tomlparser *tp)
+// Read comment until newline or EOF.
+static bool tomlparser_parse_comment(tomlparser *tp)
 {
-  int c;
+  bool success = true;
 
+  // The toml-test suite complains if we accept bad UTF-8 within comments, so
+  //  we store and check the contents of the comment.
+  bytestring *bs = bytestring_new(64);
+
+  int c;
   while ((c = tomlparser_peek_char(tp)) != EOF)
   {
-    if ((c == '\x0A') || (c == '\x0D'))
+    if (((c >= 0) && (c <= 0x08)) || ((c >= 0x0B) && (c <= 0x0C)) || ((c >= 0x0E) && (c <= 0x01F)) || (c == 0x7F))
     {
-      tomlparser_skip_newline(tp);
-      return true;
+      tomlparser_record_error(tp, "Invalid control character in comment");
+      success = false;
     }
+    if ((c == '\x0A') || (c == '\x0D'))
+      break;
 
+    bytestring_append_byte(bs, c);
     tomlparser_consume(tp, 1);
   }
 
-  return false;  // EOF
+  if (!is_utf8(bytestring_get_bytes(bs), bytestring_get_length(bs)))
+  {
+    tomlparser_record_error(tp, "Bad UTF-8 in comment");
+    success = false;
+  }
+
+  bytestring_free(bs);
+
+  return success;
 }
 
 // Skips whitespace, optionally containing newlines and embedded comments
@@ -290,7 +357,10 @@ static void tomlparser_skip_newline_whitespace(tomlparser *tp)
   while ((c = tomlparser_peek_char(tp)) != EOF)
   {
     if (c == '#')
-      tomlparser_skip_line(tp);
+    {
+      tomlparser_parse_comment(tp);
+      tomlparser_skip_newline(tp);
+    }
     else if ((c == '\x0A') || (c == '\x0D'))
       tomlparser_skip_newline(tp);
     else
@@ -312,8 +382,9 @@ static bool tomlparser_end_line(tomlparser *tp)
     return true;  // EOF
   else if (c == '#')
   {
-    tomlparser_skip_line(tp);
-    return true;
+    bool success = tomlparser_parse_comment(tp);
+    tomlparser_skip_newline(tp);
+    return success;
   }
   else if ((c == '\x0A') || (c == '\x0D'))
   {
@@ -402,6 +473,12 @@ static bool tomlparser_parse_basic_string(tomlparser *tp, bytestring *bs)
       bytestring_append_byte(bs, c);
   }
 
+  if (!is_utf8(bytestring_get_bytes(bs), bytestring_get_length(bs)))
+  {
+    tomlparser_record_error(tp, "Bad UTF-8 in basic string");
+    return false;
+  }
+
   return true;
 }
 
@@ -479,6 +556,12 @@ static bool tomlparser_parse_multiline_basic_string(tomlparser *tp, bytestring *
     }
   }
 
+  if (!is_utf8(bytestring_get_bytes(bs), bytestring_get_length(bs)))
+  {
+    tomlparser_record_error(tp, "Bad UTF-8 in multiline basic string");
+    return false;
+  }
+
   return true;
 }
 
@@ -506,6 +589,12 @@ static bool tomlparser_parse_literal_string(tomlparser *tp, bytestring *bs)
     }
     else
       bytestring_append_byte(bs, c);
+  }
+
+  if (!is_utf8(bytestring_get_bytes(bs), bytestring_get_length(bs)))
+  {
+    tomlparser_record_error(tp, "Bad UTF-8 in literal string");
+    return false;
   }
 
   return true;
@@ -574,6 +663,12 @@ static bool tomlparser_parse_multiline_literal_string(tomlparser *tp, bytestring
       tomlparser_consume(tp, 1);
       bytestring_append_byte(bs, c);
     }
+  }
+
+  if (!is_utf8(bytestring_get_bytes(bs), bytestring_get_length(bs)))
+  {
+    tomlparser_record_error(tp, "Bad UTF-8 in multiline literal string");
+    return false;
   }
 
   return true;
@@ -685,17 +780,14 @@ static bool tomlparser_parse_integer_base(tomlparser *tp, int64_t *intptr, int b
 
   while (1)
   {
-    if (tomlparser_peek_char(tp) == '_')
+    if (tomlparser_consume_char(tp, '_'))
     {
-      tomlparser_consume(tp, 1);
-
+      // Underscore must be followed by a digit
       if (!tomlparser_get_digit(tp, &d, base))
       {
         tomlparser_record_error(tp, "Premature end of numeric digits");
         return false;
       }
-
-      val = (val * base) + (d * sign);
     }
     else if (!tomlparser_get_digit(tp, &d, base))
       break;
@@ -748,7 +840,7 @@ static bool tomlparser_parse_integer(tomlparser *tp, int64_t *intptr)
 // special-float = [ minus / plus ] ( inf / nan )
 // inf = %x69.6e.66  ; inf
 // nan = %x6e.61.6e  ; nan
-static bool tomlparser_parse_float_special(tomlparser *tp, double *floatptr)
+static bool tomlparser_get_float_special(tomlparser *tp, double *floatptr)
 {
   if (tomlparser_consume_match(tp, "inf") || tomlparser_consume_match(tp, "+inf"))
   {
@@ -784,16 +876,32 @@ static bool tomlparser_parse_float_frac(tomlparser *tp, double *fracptr)
 
   double frac = 0.0;
 
-  int d, p;
-  for (p = 1; tomlparser_get_digit(tp, &d, 10); p++)
-  {
-    frac += (d * pow(10, -p));
-  }
-
-  if (p == 1)
+  int d;
+  if (!tomlparser_get_digit(tp, &d, 10))
   {
     tomlparser_record_error(tp, "Expected digit after decimal point");
     return false;
+  }
+
+  int exp = -1;
+  frac += (d * pow(10, exp));
+
+  while (1)
+  {
+    if (tomlparser_consume_char(tp, '_'))
+    {
+      // Underscore must be followed by a digit
+      if (!tomlparser_get_digit(tp, &d, 10))
+      {
+        tomlparser_record_error(tp, "Premature end of numeric digits");
+        return false;
+      }
+    }
+    else if (!tomlparser_get_digit(tp, &d, 10))
+      break;
+
+    exp--;
+    frac += (d * pow(10, exp));
   }
 
   *fracptr = frac;
@@ -801,12 +909,8 @@ static bool tomlparser_parse_float_frac(tomlparser *tp, double *fracptr)
 }
 
 // float = float-int-part ( exp / frac [ exp ] )
-// float =/ special-float
 static bool tomlparser_parse_float(tomlparser *tp, double *floatptr)
 {
-  if (tomlparser_parse_float_special(tp, floatptr))
-    return true;
-
   // Get sign, if any
   // NOTE: We can't let tomlparser_parse_integer_decimal() handle the sign
   //  because if the integer part is zero, the sign is lost.
@@ -958,6 +1062,9 @@ static bool tomlparser_parse_inline_array_value(tomlparser *tp, tomlvalue *v)
     tomlparser_record_error(tp, "Expected ] at end of array");
     return false;
   }
+
+  // Mark array as closed so we know it cannot be appended to.
+  tomlvalue_set_flag(v, TOML_FLAG_CLOSED, true);
 
   return true;
 }
@@ -1207,6 +1314,14 @@ static bool tomlparser_parse_date_value(tomlparser *tp, tomlvalue *v)
   {
     // Date alone
     struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = year, .month = month, .day = day};
+
+    const char *err;
+    if ((err = tomlvalue_unpacked_datetime_check(&dt)))
+    {
+      tomlparser_record_error(tp, err);
+      return false;
+    }
+
     v->type = TOML_TYPE_DATE;
     tomlvalue_set_datetime(v, &dt);
     return true;
@@ -1223,6 +1338,14 @@ static bool tomlparser_parse_date_value(tomlparser *tp, tomlvalue *v)
   {
     // Date and time with no timezone
     struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second, .msec = msec};
+
+    const char *err;
+    if ((err = tomlvalue_unpacked_datetime_check(&dt)))
+    {
+      tomlparser_record_error(tp, err);
+      return false;
+    }
+
     v->type = TOML_TYPE_DATETIME;
     tomlvalue_set_datetime(v, &dt);
     return true;
@@ -1235,6 +1358,14 @@ static bool tomlparser_parse_date_value(tomlparser *tp, tomlvalue *v)
 
   // Date and time with timezone
   struct tomlvalue_unpacked_datetime dt = {.tzneg = tzneg, .tzminutes = tzminutes, .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second, .msec = msec};
+
+  const char *err;
+  if ((err = tomlvalue_unpacked_datetime_check(&dt)))
+  {
+    tomlparser_record_error(tp, err);
+    return false;
+  }
+
   v->type = TOML_TYPE_DATETIME_TZ;
   tomlvalue_set_datetime(v, &dt);
   return true;
@@ -1286,8 +1417,16 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
 
     struct tomlvalue_unpacked_datetime dt = {.tzneg = false, .year = TOML_TIME_EPOCH_YEAR, .month = 1, .day = 1, .hour = hour, .minute = minute, .second = second, .msec = msec};
 
+    const char *err;
+    if ((err = tomlvalue_unpacked_datetime_check(&dt)))
+    {
+      tomlparser_record_error(tp, err);
+      return false;
+    }
+
     v->type = TOML_TYPE_TIME;
     tomlvalue_set_datetime(v, &dt);
+
     return true;
   }
   else if ((digits == 4) && (buffer_get_byte(tp->peekbuf, 4) == '-'))
@@ -1308,6 +1447,15 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
     }
   }
 
+  // Try special floats like "nan" and "inf"
+  double floatval;
+  if (tomlparser_get_float_special(tp, &floatval))
+  {
+    v->type = TOML_TYPE_FLOAT;
+    v->u.floatval = floatval;
+    return true;
+  }
+
   // At this point, either decimal integer or float. First skip over sign
   int digitstart = 0;
   if ((c == '-') || (c == '+'))
@@ -1322,15 +1470,14 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
 
     if ((c == '.') || (c == 'e') || (c == 'E'))
     {
-      double value;
-      if (!tomlparser_parse_float(tp, &value))
+      if (!tomlparser_parse_float(tp, &floatval))
       {
         tomlparser_record_error(tp, "Could not parse floating-point value");
         return false;
       }
 
       v->type = TOML_TYPE_FLOAT;
-      v->u.floatval = value;
+      v->u.floatval = floatval;
       return true;
     }
     else
@@ -1346,8 +1493,8 @@ static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v)
     }
   }
 
-  // TODO: Must be a special float like 'nan', 'inf', etc.
-  abort();
+  tomlparser_record_error(tp, "Bad syntax in value");
+  return false;
 }
 
 //  std-table = std-table-open key std-table-close
@@ -1382,6 +1529,23 @@ static bool tomlparser_parse_standard_table_header(tomlparser *tp)
   tomlvalue *node = tomlparser_walk(tp, tp->root, keypath, 0);
   if (!node)
     return false;
+
+  if (node->type != TOML_TYPE_TABLE)
+  {
+    toml_keypath_free(keypath);
+    tomlparser_record_error(tp, "Attempt to redefine non-table as table");
+    return false;
+  }
+
+  if (!tomlvalue_get_flag(node, TOML_FLAG_AUTOVIVIFIED))
+  {
+    toml_keypath_free(keypath);
+    tomlparser_record_error(tp, "Attempt to define table multiple times");
+    return false;
+  }
+
+  // Mark as not autovivified
+  tomlvalue_set_flag(node, TOML_FLAG_AUTOVIVIFIED, false);
 
   tp->current = node;
 
@@ -1429,7 +1593,7 @@ static bool tomlparser_parse_array_table_header(tomlparser *tp)
 
   bytestring *key = list_get_item(keypath, list_get_length(keypath) - 1);
 
-  tomlvalue *array = hash_get(node->u.tableval, key);
+  tomlvalue *array = tomlvalue_get_hash_element(node, key);
   if (array == NULL)
   {
     // Auto-vivify array
@@ -1440,6 +1604,11 @@ static bool tomlparser_parse_array_table_header(tomlparser *tp)
   if (array->type != TOML_TYPE_ARRAY)
   {
     tomlparser_record_error(tp, "Attempt to use non-array as array");
+    return NULL;
+  }
+  else if (tomlvalue_get_flag(array, TOML_FLAG_CLOSED))
+  {
+    tomlparser_record_error(tp, "Attempt to append to a closed array");
     return NULL;
   }
 
@@ -1512,7 +1681,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context)
 
   // Final key must not exist already
   bytestring *key = list_get_item(keypath, list_get_length(keypath) - 1);
-  tomlvalue *old = hash_get(node->u.tableval, key);
+  tomlvalue *old = tomlvalue_get_hash_element(node, key);
   if (old)
   {
     tomlparser_record_error(tp, "Attempt to overwrite populated key");
@@ -1549,8 +1718,7 @@ bool tomlparser_parse_statement(tomlparser *tp)
 
   if (c == '#')  // Full-line comment
   {
-    tomlparser_skip_line(tp);
-    return true;
+    return tomlparser_end_line(tp);
   }
   else if ((c == '\x0A') || (c == '\x0D'))  // Blank line
   {
