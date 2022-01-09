@@ -17,7 +17,7 @@ enum connection_version
   CONNECTION_VERSION_1_2  // STOMP 1.2
 };
 
-typedef struct
+struct connection
 {
   enum connection_status  status;           // Current status
   enum connection_version version;          // STOMP version used for this connection
@@ -31,16 +31,21 @@ typedef struct
   buffer                 *outbuffer;        // Output buffer
   frameparser            *frameparser;      // Frame parser
   frameserializer        *frameserializer;  // Frame serializer
-  hash                   *subscriptionmap;  // Subscription map (id -> subscription)
-} connection;
 
-connection  *connection_new(enum connection_status status, int fd);
-void         connection_free(connection *c);
-bool         connection_subscribe(connection *c, subscription *sub);
-void         connection_close(connection *c);
-void         connection_pump_input(connection *c);
-void         connection_pump_output(connection *c);
-void         connection_send_error_message(connection *c, frame *causalframe, bytestring *msg);
-void         connection_dump(connection *c);
+  uint32_t                next_sub_server_id;  // Next sub_serverid for a subscription on this connection
+  hash                   *subs_by_client_id;   // Subscription map (client id -> subscription)
+  hash                   *subs_by_server_id;   // Subscription map (server id -> subscription)
+};
+
+connection       *connection_new(enum connection_status status, int fd);
+void              connection_free(connection *c);
+const bytestring *connection_generate_subscription_server_id(connection *c);
+bool              connection_subscribe(connection *c, subscription *sub);
+bool              connection_unsubscribe(connection *c, subscription *sub);
+void              connection_close(connection *c);
+void              connection_pump_input(connection *c);
+void              connection_pump_output(connection *c);
+void              connection_send_error_message(connection *c, frame *causalframe, bytestring *msg);
+void              connection_dump(connection *c);
 
 #endif

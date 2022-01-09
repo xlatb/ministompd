@@ -63,8 +63,8 @@ int connectionbundle_mark_fds(connectionbundle *cb, int highfd, fd_set *readfds,
     if (c->status != CONNECTION_STATUS_STOMP_ERROR)
       FD_SET(c->fd, readfds);
 
-    // Select for writing if the write buffer is not empty
-    if (buffer_get_length(c->outbuffer) > 0)
+    // Select for writing if we have frames to serialize of if the write buffer is not empty
+    if (frameserializer_has_work_frames(c->frameserializer) || (buffer_get_length(c->outbuffer) > 0))
       FD_SET(c->fd, writefds);
   }
 

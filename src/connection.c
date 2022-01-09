@@ -1,5 +1,7 @@
 #include <sys/time.h>  // gettimeofday()
 #include <errno.h>
+#include <assert.h>  // assert()
+#include <inttypes.h>  // PRIx32
 
 #include "ministompd.h"
 
@@ -35,9 +37,20 @@ connection *connection_new(enum connection_status status, int fd)
   c->outbuffer       = buffer_new(4096);
   c->frameparser     = frameparser_new();
   c->frameserializer = frameserializer_new();
-  c->subscriptionmap = hash_new(16);
+
+  c->next_sub_server_id = 0;
+  c->subs_by_client_id = hash_new(16);
+  c->subs_by_server_id = hash_new(16);
 
   return c;
+}
+
+const bytestring *connection_generate_subscription_server_id(connection *c)
+{
+  bytestring *id = bytestring_new(32);
+  bytestring_append_printf(id, "sub-%" PRIx32, c->next_sub_server_id);
+  c->next_sub_server_id++;
+  return id;
 }
 
 void connection_free(connection *c)
@@ -48,13 +61,29 @@ void connection_free(connection *c)
   frameserializer_free(c->frameserializer);
   buffer_free(c->inbuffer);
   buffer_free(c->outbuffer);
-  hash_free(c->subscriptionmap);
+  hash_free(c->subs_by_client_id);
+  hash_free(c->subs_by_server_id);
   xfree(c);
 }
 
 bool connection_subscribe(connection *c, subscription *sub)
 {
-  return hash_add(c->subscriptionmap, sub->subid, sub);
+  hash_add(c->subs_by_client_id, sub->client_id, sub);
+  hash_add(c->subs_by_server_id, sub->server_id, sub);
+  return true;
+}
+
+bool connection_unsubscribe(connection *c, subscription *sub)
+{
+  subscription *removed;
+
+  removed = hash_remove(c->subs_by_client_id, sub->client_id);
+  assert(removed == sub);
+
+  removed = hash_remove(c->subs_by_server_id, sub->server_id);
+  assert(removed == sub);
+
+  return true;
 }
 
 void connection_close(connection *c)
@@ -113,7 +142,7 @@ void connection_pump_output(connection *c)
 }
 
 // Puts the connection in error status and queues an ERROR frame for output.
-//  The causalframe should contain the client frame that casued the error,
+//  The causalframe should contain the client frame that caused the error,
 //  or NULL if there is none. Takes ownership of the error message bytestring.
 void connection_send_error_message(connection *c, frame *causalframe, bytestring *msg)
 {
@@ -140,7 +169,7 @@ void connection_send_error_message(connection *c, frame *causalframe, bytestring
   }
 
   // Enqueue frame
-  if (!frameserializer_enqueue_frame(c->frameserializer, errorframe))
+  if (!frameserializer_enqueue_frame(c->frameserializer, errorframe, NULL))
   {
     log_printf(LOG_LEVEL_ERROR, "Outgoing queue is full, dropping error frame.\n");
     connection_close(c);
@@ -153,5 +182,19 @@ void connection_send_error_message(connection *c, frame *causalframe, bytestring
 void connection_dump(connection *c)
 {
   printf("Connection %p fd %d status %d\n", c, c->fd, c->status);
+
+  int count = hash_get_itemcount(c->subs_by_server_id);
+
+  const bytestring *keys[count];
+  hash_get_keys(c->subs_by_server_id, keys, count);
+
+  printf("  Subscriptions by server id: (%d subs)\n", count);
+  for (int i = 0; i < count; i++)
+  {
+    bytestring_dump(keys[i]);
+
+    subscription *sub = hash_get(c->subs_by_server_id, keys[i]);
+    subscription_dump(sub);
+  }
 }
 
