@@ -19,6 +19,13 @@ buffer *buffer_new(size_t size)
   return b;
 }
 
+void buffer_clear(buffer *b)
+{
+  b->length = 0;
+  b->position = 0;
+  return;
+}
+
 // Compacts the data remaining in the buffer to be at the start of the allocated memory.
 void buffer_compact(buffer *b)
 {
@@ -81,9 +88,25 @@ ssize_t buffer_input_fd(buffer *b, int fd, size_t size)
   return ret;
 }
 
-// Reads data from a string of bytes.
-// Returns the number of bytes read.
-ssize_t buffer_input_bytes(buffer *b, const uint8_t *bytes, size_t size)
+// Reads a bytestring from the start of the buffer, up until a newline
+//  character is reached.
+// If no newline character is found, returns NULL.
+bytestring *buffer_read_bytestring_line(buffer *b)
+{
+  int pos = buffer_find_first_byte_in_set(b, (uint8_t *) "\x0D\x0A", 2, NULL);
+  if (pos < 0)
+    return NULL;
+
+  bytestring *bs = bytestring_new(pos);
+  bytestring_append_bytes(bs, b->data + b->position, pos);
+  buffer_consume(b, pos);
+
+  return bs;
+}
+
+// Writes the given bytes into the buffer.
+// Returns the number of bytes added.
+ssize_t buffer_write_bytes(buffer *b, const uint8_t *bytes, size_t size)
 {
   // Ensure we have enough slack space
   buffer_ensure_slack(b, size);
@@ -95,9 +118,9 @@ ssize_t buffer_input_bytes(buffer *b, const uint8_t *bytes, size_t size)
   return size;
 }
 
-// Reads a single byte into the buffer.
-// Returns the number of bytes read.
-ssize_t buffer_input_byte(buffer *b, uint8_t byte)
+// Writes a single byte into the buffer.
+// Returns the number of bytes added.
+ssize_t buffer_write_byte(buffer *b, uint8_t byte)
 {
   // Ensure we have enough slack space
   buffer_ensure_slack(b, 1);
@@ -109,16 +132,16 @@ ssize_t buffer_input_byte(buffer *b, uint8_t byte)
   return 1;
 }
 
-// Reads a bytestring into the buffer.
-// Returns the number of bytes read.
-ssize_t buffer_input_bytestring(buffer *b, const bytestring *bs)
+// Writes the contents of a bytestring into the buffer.
+// Returns the number of bytes added.
+ssize_t buffer_write_bytestring(buffer *b, const bytestring *bs)
 {
-  return buffer_input_bytes(b, bs->data, bs->length);
+  return buffer_write_bytes(b, bs->data, bs->length);
 }
 
-// Reads a segment of a bytestring into the buffer.
-// Returns the number of bytes read.
-ssize_t buffer_input_bytestring_slice(buffer *b, const bytestring *bs, int position, size_t length)
+// Writes a segment of a bytestring into the buffer.
+// Returns the number of bytes added.
+ssize_t buffer_write_bytestring_slice(buffer *b, const bytestring *bs, int position, size_t length)
 {
   // Bounds check
   if ((position < 0) || (position > bs->length))
@@ -128,7 +151,7 @@ ssize_t buffer_input_bytestring_slice(buffer *b, const bytestring *bs, int posit
   if ((position + length) > bs->length)
     length = bs->length - position;
 
-  return buffer_input_bytes(b, bs->data + position, length);
+  return buffer_write_bytes(b, bs->data + position, length);
 }
 
 // Writes data to an fd and removes it from the start of the buffer.
@@ -167,6 +190,32 @@ int buffer_find_byte(buffer *b, uint8_t byte)
     return -1;  // No byte found
 
   return (p - (b->data + b->position));
+}
+
+// Find the index of the first instance of a character in the given set in the
+//  buffer.
+// If 'found' is provided and not NULL, the character found will be written
+//  to it.
+// Returns -1 if no such byte is found.
+int buffer_find_first_byte_in_set(buffer *b, uint8_t *set, size_t setlen, uint8_t *found)
+{
+  uint8_t *p = b->data + b->position;
+
+  for (int i = 0; i < b->length; i++)
+  {
+    uint8_t byte = *p++;
+    for (int s = 0; s < setlen; s++)
+    {
+      if (byte == set[s])
+      {
+        if (found)
+          *found = byte;
+        return i;
+      }
+    }
+  }
+
+  return -1;  // Not found
 }
 
 // Like buffer_find_byte(), but the start position and length of the search

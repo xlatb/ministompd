@@ -124,7 +124,7 @@ static bool tomlparser_ensure_peekbuf_length(tomlparser *tp, int count)
   int needed = count - len;
   uint8_t readbuf[needed];
   int ret = fread(readbuf, 1, needed, tp->file);
-  buffer_input_bytes(tp->peekbuf, readbuf, ret);
+  buffer_write_bytes(tp->peekbuf, readbuf, ret);
 
   return (ret >= needed) ? true : false;
 }
