@@ -1709,6 +1709,8 @@ static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context)
   if (!hash_add(node->u.tableval, key, v))
     abort();
 
+  toml_keypath_free(keypath);
+
   return true;
 }
 
