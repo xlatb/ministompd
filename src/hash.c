@@ -12,9 +12,6 @@
 #include "siphash24.h"
 #include "ministompd.h"
 
-// TODO: Grow hash tables as they fill up
-// TODO: Allow enumerating keys
-
 static bool    siphash_key_set;
 static uint8_t siphash_key[8];
 
@@ -113,11 +110,92 @@ void hash_free(hash *h)
   xfree(h);
 }
 
+void hash_grow(hash *h)
+{
+  // Don't grow if already at max size
+  if (h->bucketcount >= HASH_MAX_BUCKETS)
+    return;
+
+  // Calculate new size
+  int bucketcount = h->bucketcount << 1;
+  if ((bucketcount < 0) || (bucketcount >= HASH_MAX_BUCKETS))
+    bucketcount = HASH_MAX_BUCKETS;
+
+  fprintf(stderr, "Expanding hash %d -> %d\n", h->bucketcount, bucketcount);
+
+  // Allocate new buckets
+  hash_item *buckets = xmalloc(sizeof(hash_item) * bucketcount);
+  memset(buckets, 0, (sizeof(hash_item) * bucketcount));
+
+  // Copy from old to new buckets
+  for (int b = 0; b < h->bucketcount; b++)
+  {
+    for (hash_item *olditem = &h->buckets[b]; olditem && olditem->key; olditem = olditem->next)
+    {
+      // Re-hash existing key
+      uint64_t code;
+      siphash_24_crypto_auth((unsigned char *) &code, bytestring_get_bytes(olditem->key), bytestring_get_length(olditem->key), siphash_key);
+
+      // Find the associated bucket for the new size
+      int b = code % bucketcount;
+
+      // Add to bucket
+      hash_item *item = &buckets[b];
+      if (item->key)
+      {
+        // Find end of chain for the bucket
+        while (item->next)
+          item = item->next;
+
+        // Add new item
+        hash_item *new_item = xmalloc(sizeof(hash_item));
+        new_item->key  = olditem->key;
+        new_item->val  = olditem->val;
+        new_item->next = NULL;
+        item->next = new_item;
+      }
+      else
+      {
+        // No chain, so just populate head
+        item->key = olditem->key;
+        item->val = olditem->val;
+        item->next = NULL;
+      }
+    }
+  }
+
+  // Deallocate old allocated items
+  for (int b = 0; b < h->bucketcount; b++)
+  {
+    hash_item *bucket = &h->buckets[b];
+
+    hash_item *nextitem;
+    for (hash_item *olditem = bucket->next; olditem; olditem = nextitem)
+    {
+      nextitem = olditem->next;
+
+      xfree(olditem);
+    }
+  }
+
+  // Replace bucket data
+  xfree(h->buckets);
+  h->buckets = buckets;
+  h->bucketcount = bucketcount;
+
+  return;
+}
+
 // Adds a value to the hash. We do not take ownership of the key. The value
 //  must remain valid as long as it is in the hash. Returns false if the
 //  addition failed due to already having a value with the given key.
 bool hash_add(hash *h, const bytestring *key, void *value)
 {
+  // Grow the hash if too full
+  float load = h->itemcount / h->bucketcount;
+  if (load > HASH_LOAD_FACTOR)
+    hash_grow(h);
+
   // Find the hash value
   uint64_t code;
   siphash_24_crypto_auth((unsigned char *) &code, bytestring_get_bytes(key), bytestring_get_length(key), siphash_key);
@@ -194,6 +272,61 @@ void *hash_get(hash *h, const bytestring *key)
 
   // Not found
   return NULL;
+}
+
+// As above but the key is raw pointer to bytes plus a length.
+void *hash_get_raw(hash *h, const uint8_t *keybytes, size_t keylength)
+{
+  // Find the hash value
+  uint64_t code;
+  siphash_24_crypto_auth((unsigned char *) &code, keybytes, keylength, siphash_key);
+
+  // Find the associated bucket
+  int b = code % h->bucketcount;
+
+  // Walk the list looking for the item
+  hash_item *item = &h->buckets[b];
+  while (item && item->key)
+  {
+    if (bytestring_equals_bytes(item->key, keybytes, keylength))
+      return item->val;
+
+    item = item->next;
+  }
+
+  // Not found
+  return NULL;
+}
+
+// Retrieves an item from the hash, returning its value, or NULL if the
+//  hash was empty.
+// If keyptr is supplied, a pointer to the item's key will be stored there.
+void *hash_get_any(hash *h, const bytestring **keyptr)
+{
+  if (h->itemcount == 0)
+    return NULL;
+
+  // Find any non-empty bucket
+  for (int b = 0; b < h->bucketcount; b++)
+  {
+    hash_item *item = &h->buckets[b];
+
+    // Skip empty buckets
+    if (!item->key)
+      continue;
+
+    // Found one, remember its contents
+    hash_item retrieved = *item;
+
+    // If the caller provided a keyptr, give them the key
+    if (keyptr)
+      *keyptr = (bytestring *) retrieved.key;
+
+    return retrieved.val;
+  }
+
+  // Should never happen, since itemcount was nonzero
+  abort();
 }
 
 // Removes the given key from the hash, returning the value it was previously
@@ -319,6 +452,35 @@ void *hash_remove_any(hash *h, bytestring **keyptr)
 int hash_get_itemcount(hash *h)
 {
   return h->itemcount;
+}
+
+// Given a hash, an array of 'const bytestring *' and a max size, writes the
+//  hash keys to the array. The array size must be >= 1.
+// Returns the number of entries written.
+// The original keys are returned, and the hash keeps ownership of them.
+// Unlike hash_get_keys_list(), we can use this to enumerate the keys
+//  without allocating new memory on the heap.
+int hash_get_keys(hash *h, const bytestring **list, int size)
+{
+  int count = 0;
+
+  for (int b = 0; b < h->bucketcount; b++)
+  {
+    hash_item *item = &h->buckets[b];
+
+    while (item && item->key)
+    {
+      *list++ = item->key;
+      item = item->next;
+      count++;
+
+      // Enforce maximum size
+      if (count == size)
+        return count;
+    }
+  }
+
+  return count;
 }
 
 void hash_dump(hash *h)
