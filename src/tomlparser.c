@@ -12,6 +12,7 @@
 static bool tomlparser_parse_value(tomlparser *tp, tomlvalue *v);
 static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context);
 static bool tomlparser_get_digits(tomlparser *tp, int base, int count, uint64_t *valueptr);
+static void tomlparser_clear_errors(tomlparser *tp);
 
 // Frees a 'keypath', which is just a list of bytestrings.
 static void toml_keypath_free(list *keypath)
@@ -42,6 +43,20 @@ tomlparser *tomlparser_new(void)
   tp->current = tp->root;
 
   return tp;
+}
+
+void tomlparser_free(tomlparser *tp)
+{
+  tomlparser_clear_errors(tp);
+
+  buffer_free(tp->peekbuf);
+
+  if (tp->root)
+    tomlvalue_free(tp->root);
+
+  xfree(tp);
+
+  return;
 }
 
 static void tomlparser_clear_errors(tomlparser *tp)
@@ -1733,4 +1748,13 @@ bool tomlparser_parse_statement(tomlparser *tp)
     return true;
 
   return false;
+}
+
+// Parses entire input, returning true if no errors found.
+bool tomlparser_parse(tomlparser *tp)
+{
+  while (tomlparser_parse_statement(tp))
+    ;
+
+  return tomlparser_get_error_count(tp) == 0;
 }
