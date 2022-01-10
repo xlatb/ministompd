@@ -176,7 +176,7 @@ void tomlvalue_free(tomlvalue *v)
   case TOML_TYPE_TABLE:
     {
       tomlvalue *e;
-      while ((e = hash_get_any(v->u.tableval, NULL)))
+      while ((e = hash_remove_any(v->u.tableval, NULL)))
         tomlvalue_free(e);
       hash_free(v->u.tableval);
       xfree(v);
