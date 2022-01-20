@@ -1,75 +1,83 @@
 #include "ministompd.h"
 #include <string.h>  // memmove()
 
+#define FRAMEROUTER_DEFAULT_SUBS_SIZE 8
+#define FRAMEROUTER_DEFAULT_DISP_SIZE 4
+
+static subscription *framerouter_find_subscription(framerouter *fr)
+{
+  int sub_count = list_get_length(fr->subscriptions);
+  if (sub_count == 0)
+    return NULL;  // No subscriptions
+
+  fr->subscription_index %= sub_count;
+
+  subscription *sub = list_get_item(fr->subscriptions, fr->subscription_index);
+
+  fr->subscription_index++;
+
+  return sub;
+}
+
 framerouter *framerouter_new()
 {
   framerouter *fr = xmalloc(sizeof(framerouter));
 
-  fr->size     = FRAMEROUTER_DEFAULT_SIZE;
-  fr->length   = 0;
-  fr->position = 0;
+  fr->subscriptions      = list_new(FRAMEROUTER_DEFAULT_SUBS_SIZE);
+  fr->subscription_index = 0;
 
-  fr->subscriptions = xmalloc(sizeof(subscription *) * fr->size);
+  fr->dispatches = list_new(FRAMEROUTER_DEFAULT_DISP_SIZE);
 
   return fr;
 }
 
 void framerouter_free(framerouter *fr)
 {
-  // Note: We do not free the individual subscriptions
+  // Note: We do not free the individual subscriptions because we do not own them
+  list_free(fr->subscriptions);
 
-  xfree(fr->subscriptions);
+  // TODO: Free the contained dispatches
+  list_free(fr->dispatches);
 
   xfree(fr);
-}
-
-static void framerouter_resize(framerouter *fr, int size)
-{
-  size = (size | 0x07) + 1;  // Round up to next multiple of eight
-
-  if (fr->size >= size)
-    return;  // Nothing to do
-
-  fr->size = size;
-  fr->subscriptions = xrealloc(fr->subscriptions, sizeof(subscription *) * fr->size);
 }
 
 // Adds a subscription to the framerouter. Does not take ownership of the
 //  subscription.
 void framerouter_add_subscription(framerouter *fr, subscription *sub)
 {
-  if (fr->length == fr->size)
-    framerouter_resize(fr, fr->size + 1);
-
-  fr->subscriptions[fr->length] = sub;
-
-  fr->length++;
+  list_push(fr->subscriptions, sub);
 }
 
 // Removes a subscription from the framerouter. Returns true iff subscription
 //  was removed.
 bool framerouter_remove_subscription(framerouter *fr, subscription *sub)
 {
-  int i;
-  bool found = false;
+  int i = list_search(fr->subscriptions, sub);
+  if (i < 0)
+    return false;  // Not found
 
-  // Search for subscription
-  for (i = 0; i < fr->length; i++)
-  {
-    if (fr->subscriptions[i] == sub)
-    {
-      found = true;
-      break;
-    }
-  }
-
-  // Give up if not found
-  if (found == false)
-    return false;
-
-  // Shift entries down to fill in vacated slot
-  memmove(fr->subscriptions + i, fr->subscriptions + i + 1, sizeof(subscription *) * (fr->length - i - 1));
-  fr->length--;
-
+  list_remove(fr->subscriptions, i);
   return true;
+}
+
+int framerouter_subscription_count(framerouter *fr)
+{
+  return list_get_length(fr->subscriptions);
+}
+
+void framerouter_dispatch(framerouter *fr, frame *f, storage_handle sh)
+{
+  struct dispatch *d = xmalloc(sizeof(struct dispatch));
+  d->frame  = f;
+  d->handle = sh;
+  if (clock_gettime(CLOCK_MONOTONIC, &d->createtime))
+    abort();  // Couldn't get time
+
+  list_push(fr->dispatches, d);
+
+  subscription *sub = framerouter_find_subscription(fr);
+  assert(sub != NULL);
+
+  subscription_deliver(sub, f);
 }
