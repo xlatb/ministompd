@@ -3,6 +3,34 @@
 
 #include "ministompd.h"
 
+// Given an integer, returns the number of characters needed to represent
+//  it as a decimal number, including sign for negative numbers.
+static int decimal_char_length(int num)
+{
+  int count = 1;
+
+  if (num < 0)
+  {
+    count++;  // One extra place for minus sign
+
+    while (num <= -10)
+    {
+      num /= 10;
+      count++;
+    }
+  }
+  else
+  {
+    while (num >= 10)
+    {
+      num /= 10;
+      count++;
+    }
+  }
+
+  return count;
+}
+
 bytestring *bytestring_new(size_t size)
 {
   // Size must be positive
@@ -105,6 +133,8 @@ bytestring *bytestring_append_byte(bytestring *bs, uint8_t byte)
 // Append one bytestring to another.
 bytestring *bytestring_append_bytestring(bytestring *bs, const bytestring *src)
 {
+  assert(bs != src);
+
   // Ensure size
   if (bs->size < (bs->length + src->length))
     bytestring_resize(bs, bs->length + src->length);
@@ -138,79 +168,105 @@ bytestring *bytestring_append_bytestring_fragment(bytestring *bs, const bytestri
   return bs;
 }
 
-// Append printf()-style string data to the end of a bytestring.
-bytestring *bytestring_append_printf(bytestring *bs, const char *fmt, ...)
+bytestring *bytestring_append_int(bytestring *bs, int i)
 {
-  va_list args;
+  bool negative = i < 0;
+  int length = decimal_char_length(i);
 
-  while (1)
+  // Ensure enough space to hold integer
+  if (bs->size < (bs->length + length))
+    bytestring_resize(bs, (bs->length + length));
+
+  // Write digits to string (right-to-left)
+  uint8_t *pos = bs->data + bs->length + length - 1;
+  while (i)
   {
-    int count;
-    int slack = bs->size - bs->length;
-
-    // Attempt the printf() with whatever slack space we have left
-    va_start(args, fmt);
-    count = vsnprintf((char *) bs->data + bs->length, slack, fmt, args);
-    va_end(args);
-
-    // Unexpected failure
-    if (count < 0)
-      abort();
-
-    // If there was enough space, we're all done
-    if (count < slack)
-    {
-      bs->length += count;
-      return bs;
-    }
-
-    // Add the required amount of slack space
-    bytestring_resize(bs, bs->length + count + 1);  // +1 because we need space for NUL byte not included in count
-  }
-}
-
-// As above, but don't use varargs.
-bytestring *bytestring_append_vprintf(bytestring *bs, const char *fmt, va_list args)
-{
-  int count;
-  int slack = bs->size - bs->length;
-
-  // Make a copy of the original args, in case we need to retry
-  va_list original_args;
-  va_copy(original_args, args);
-
-  // Attempt the printf() with whatever slack space we have left
-  count = vsnprintf((char *) bs->data + bs->length, slack, fmt, args);
-
-  // Unexpected failure
-  if (count < 0)
-    abort();
-
-  // If there was enough space, we're all done
-  if (count < slack)
-  {
-    va_end(original_args);
-    bs->length += count;
-    return bs;
+    *pos-- = '0' + abs(i % 10);
+    i /= 10;
   }
 
-  // Add the required amount of slack space
-  bytestring_resize(bs, bs->length + count + 1);  // +1 because we need space for NUL byte not included in count
-  slack = bs->size - bs->length;
+  // Add negative sign if needed
+  if (negative)
+    *pos = '-';
 
-  // Retry the printf()
-  count = vsnprintf((char *) bs->data + bs->length, slack, fmt, original_args);
-  va_end(original_args);
-
-  // This should not happen, since we allocated enough space
-  if ((count < 0) || (count >= slack))
-    abort();
-
-  // Fix up length
-  bs->length += count;
+  bs->length += length;
 
   return bs;
 }
+
+//// Append printf()-style string data to the end of a bytestring.
+//bytestring *bytestring_append_printf(bytestring *bs, const char *fmt, ...)
+//{
+//  va_list args;
+//
+//  while (1)
+//  {
+//    int count;
+//    int slack = bs->size - bs->length;
+//
+//    // Attempt the printf() with whatever slack space we have left
+//    va_start(args, fmt);
+//    count = vsnprintf((char *) bs->data + bs->length, slack, fmt, args);
+//    va_end(args);
+//
+//    // Unexpected failure
+//    if (count < 0)
+//      abort();
+//
+//    // If there was enough space, we're all done
+//    if (count < slack)
+//    {
+//      bs->length += count;
+//      return bs;
+//    }
+//
+//    // Add the required amount of slack space
+//    bytestring_resize(bs, bs->length + count + 1);  // +1 because we need space for NUL byte not included in count
+//  }
+//}
+
+//// As above, but don't use varargs.
+//bytestring *bytestring_append_vprintf(bytestring *bs, const char *fmt, va_list args)
+//{
+//  int count;
+//  int slack = bs->size - bs->length;
+//
+//  // Make a copy of the original args, in case we need to retry
+//  va_list original_args;
+//  va_copy(original_args, args);
+//
+//  // Attempt the printf() with whatever slack space we have left
+//  count = vsnprintf((char *) bs->data + bs->length, slack, fmt, args);
+//
+//  // Unexpected failure
+//  if (count < 0)
+//    abort();
+//
+//  // If there was enough space, we're all done
+//  if (count < slack)
+//  {
+//    va_end(original_args);
+//    bs->length += count;
+//    return bs;
+//  }
+//
+//  // Add the required amount of slack space
+//  bytestring_resize(bs, bs->length + count + 1);  // +1 because we need space for NUL byte not included in count
+//  slack = bs->size - bs->length;
+//
+//  // Retry the printf()
+//  count = vsnprintf((char *) bs->data + bs->length, slack, fmt, original_args);
+//  va_end(original_args);
+//
+//  // This should not happen, since we allocated enough space
+//  if ((count < 0) || (count >= slack))
+//    abort();
+//
+//  // Fix up length
+//  bs->length += count;
+//
+//  return bs;
+//}
 
 // Returns the position of the next occurance of the given byte starting at
 //  the given position. Returns -1 if the byte does not occur.
@@ -339,6 +395,11 @@ bool bytestring_strtol(const bytestring *bs, int start, int *end, long *value, i
   if (value != NULL)
     *value = v;
   return true;
+}
+
+ssize_t bytestring_write_fd(const bytestring *bs, int fd)
+{
+  return write(fd, bs->data, bs->length);
 }
 
 void bytestring_dump(const bytestring *b)
