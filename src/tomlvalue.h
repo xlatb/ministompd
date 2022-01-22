@@ -101,10 +101,7 @@ const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime
 bool tomlvalue_get_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked);
 bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked);
 
-//bool tomlvalue_get_time(tomlvalue *v, int *hour, int *minute, int *second, int *usecs);
-//bool tomlvalue_set_time(tomlvalue *v, int hours, int minutes, int seconds, int msecs);
 bool tomlvalue_get_tzoffset(tomlvalue *v, bool *negative, int *minutes);
-//bool tomlvalue_set_tzoffset(tomlvalue *v, bool negative, int minutes);
 
 static inline tomlvalue *tomlvalue_get_hash_element(tomlvalue *v, bytestring *key)
 {

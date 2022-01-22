@@ -309,72 +309,6 @@ tomlvalue *tomlvalue_new_array(void)
   return v;
 }
 
-/*
-bool tomlvalue_get_date(tomlvalue *v, int *year, int *month, int *day)
-{
-  if ((v->type & TOML_TYPESET_MASK) != TOML_TYPESET_DATETIME) return false;  // Ensure a datetime type
-
-  struct tm fields;
-  time_t    unixtime = v->u.datetimeval.msecs / TOML_TIME_SECOND;
-  if (!gmtime_r(&unixtime, &fields))
-    return false;  // Failed
-
-  *year  = fields.tm_year + 1900;
-  *month = fields.tm_mon + 1;
-  *day   = fields.tm_mday;
-  return true;
-
-  // TODO: Remove?
-
-  int daycount = v->u.datetimeval.msecs / TOML_TIME_DAY;
-  int monthdays;
-
-  if (v->u.datetimeval.msecs >= 0)
-  {
-    *year = 1970;
-    *month = 1;
-    *day = 1;
-
-    while (daycount > (monthdays = days_in_month(*year, *month)))
-    {
-      daycount -= monthdays;
-      *month += 1;
-      *day = 1;
-      if (*month > 12)
-      {
-        *month = 1;
-        *year += 1;
-      }
-    }
-
-    *day += daycount;
-  }
-  else
-  {
-    *year = 1969;
-    *month = 12;
-    *day = 31;
-
-    daycount = abs(daycount);
-    while (daycount > (monthdays = days_in_month(*year, *month)))
-    {
-      daycount -= monthdays;
-      *month -= 1;
-      if (*month == 0)
-      {
-        *month = 12;
-        *year -= 1;
-      }
-      *day = days_in_month(*year, *month);
-    }
-
-    *day -= daycount;
-  }
-
-  return true;
-}
-*/
-
 const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked)
 {
   if ((unpacked->year < 1) || (unpacked->year > 9999))
@@ -409,7 +343,6 @@ bool tomlvalue_get_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *un
   return true;
 }
 
-
 bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked)
 {
   if ((v->type & TOML_TYPESET_MASK) != TOML_TYPESET_DATETIME) return false;  // Ensure a datetime type
@@ -427,50 +360,6 @@ bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *un
   return true;
 }
 
-/*
-bool tomlvalue_get_time(tomlvalue *v, int *hoursptr, int *minutesptr, int *secondsptr, int *msecsptr)
-{
-  if ((v->type & TOML_TYPESET_MASK) != TOML_TYPESET_DATETIME) return false;  // Ensure a datetime type
-
-  int64_t value = v->u.datetimeval.msecs;
-
-  if (msecsptr)
-    *msecsptr = value % TOML_TIME_SECOND;
-
-  value /= TOML_TIME_SECOND;
-
-  if (secondsptr)
-    *secondsptr = value % 60;
-
-  value /= 60;
-
-  if (minutesptr)
-    *minutesptr = value % 60;
-
-  value /= 60;
-
-  if (hoursptr)
-    *hoursptr = value % 24;
-
-  return true;
-}
-*/
-
-/*
-bool tomlvalue_set_time(tomlvalue *v, int hours, int minutes, int seconds, int msecs)
-{
-  if ((v->type & TOML_TYPESET_MASK) != TOML_TYPESET_DATETIME) return false;  // Ensure a datetime type
-
-  int64_t value = v->u.datetimeval.msecs;
-
-  value /= TOML_TIME_DAY;
-  value += (hours * TOML_TIME_HOUR) + (minutes * TOML_TIME_MINUTE) + (seconds * TOML_TIME_SECOND) + msecs;
-
-  v->u.datetimeval.msecs = value;
-  return true;
-}
-*/
-
 bool tomlvalue_get_tzoffset(tomlvalue *v, bool *negative, int *minutes)
 {
   if ((v->type & TOML_TYPESET_MASK) != TOML_TYPESET_DATETIME) return false;  // Ensure a datetime type
@@ -483,27 +372,6 @@ bool tomlvalue_get_tzoffset(tomlvalue *v, bool *negative, int *minutes)
 
   return true;
 }
-
-/*
-bool tomlvalue_set_tzoffset(tomlvalue *v, bool negative, int minutes)
-{
-  // Type check
-  uint8_t typeset = v->type & TOML_TYPESET_MASK;
-  if (typeset != TOML_TYPESET_DATETIME)
-    return false;  // Not a datetime type
-
-  if (minutes < 0)
-  {
-    negative = true;
-    minutes = abs(minutes);
-  }
-
-  v->u.datetimeval.tzsign = (negative) ? 1 : 0;
-  v->u.datetimeval.tzminutes = minutes;
-
-  return true;
-}
-*/
 
 void tomlvalue_set_flag(tomlvalue *v, int flag, bool value)
 {
