@@ -23,8 +23,8 @@ bytestring *bytestring_append_bytes(bytestring *bs, const uint8_t *data, size_t 
 bytestring *bytestring_append_byte(bytestring *bs, uint8_t byte);
 bytestring *bytestring_append_bytestring(bytestring *bs, const bytestring *src);
 bytestring *bytestring_append_bytestring_fragment(bytestring *bs, const bytestring *src, int position, size_t length);
-//bytestring *bytestring_append_printf(bytestring *bs, const char *fmt, ...);
-//bytestring *bytestring_append_vprintf(bytestring *bs, const char *fmt, va_list ap);
+bytestring *bytestring_printf(bytestring *pb, const char *fmt, ...);
+bytestring *bytestring_vprintf(bytestring *pb, const char *fmt, va_list args);
 int         bytestring_find_byte(const bytestring *b, uint8_t byte, int startpos);
 bool        bytestring_equals(const bytestring *bs1, const bytestring *bs2);
 bool        bytestring_equals_bytes(const bytestring *bs, const uint8_t *data, size_t length);

@@ -10,8 +10,6 @@
 #include "bytestring.h"
 #include "bytestring_printf.h"
 
-//static printbuf *shared_printbuf = NULL;
-
 enum fmt_spec_flags
 {
   FMT_FLAG_HAS_WIDTH      = 0x1,
@@ -210,19 +208,7 @@ static void bytestring_print_fmt_spec(bytestring *bs, const struct fmt_spec *fs,
   }
 }
 
-bytestring *bytestring_printf(bytestring *bs, const char *fmt, ...)
-{
-  va_list args;
-  va_start(args, fmt);
-
-  bytestring *ret = bytestring_vprintf(bs, fmt, args);
-
-  va_end(args);
-
-  return ret;
-}
-
-bytestring *bytestring_vprintf(bytestring *bs, const char *fmt, va_list args)
+bytestring *bytestring_vprintf_internal(bytestring *bs, const char *fmt, va_list args)
 {
   const char *f = fmt;
   while (*f)

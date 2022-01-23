@@ -2,6 +2,7 @@
 #include <ctype.h>   // isprint()
 
 #include "ministompd.h"
+#include "bytestring_printf.h"
 
 // Given an integer, returns the number of characters needed to represent
 //  it as a decimal number, including sign for negative numbers.
@@ -192,6 +193,23 @@ bytestring *bytestring_append_int(bytestring *bs, int i)
   bs->length += length;
 
   return bs;
+}
+
+bytestring *bytestring_printf(bytestring *bs, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+
+  bytestring *ret = bytestring_vprintf_internal(bs, fmt, args);
+
+  va_end(args);
+
+  return ret;
+}
+
+bytestring *bytestring_vprintf(bytestring *bs, const char *fmt, va_list args)
+{
+  return bytestring_vprintf_internal(bs, fmt, args);
 }
 
 //// Append printf()-style string data to the end of a bytestring.
