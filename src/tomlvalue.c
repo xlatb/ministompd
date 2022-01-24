@@ -309,6 +309,61 @@ tomlvalue *tomlvalue_new_array(void)
   return v;
 }
 
+tomlvalue *tomlvalue_dup(tomlvalue *v)
+{
+  struct tomlvalue *v2 = xmalloc(sizeof(struct tomlvalue));
+
+  v2->type  = v->type;
+  v2->flags = v->flags;
+
+  switch (v->type)
+  {
+  case TOML_TYPE_NONE:
+    break;
+  case TOML_TYPE_STR:
+    v2->u.strval = bytestring_dup(v->u.strval);
+    break;
+  case TOML_TYPE_INT:
+    v2->u.intval = v->u.intval;
+    break;
+  case TOML_TYPE_FLOAT:
+    v2->u.floatval = v->u.floatval;
+    break;
+  case TOML_TYPE_BOOL:
+    v2->u.boolval = v->u.boolval;
+    break;
+  case TOML_TYPE_TIME:
+  case TOML_TYPE_DATE:
+  case TOML_TYPE_DATETIME:
+  case TOML_TYPE_DATETIME_TZ:
+    v2->u.datetimeval = v->u.datetimeval;
+    break;
+  case TOML_TYPE_ARRAY:
+    {
+      int len = list_get_length(v->u.arrayval);
+      v2->u.arrayval = list_new(len);
+      for (int i = 0; i < len; i++)
+        list_push(v2->u.arrayval, tomlvalue_dup(list_get_item(v->u.arrayval, i)));
+    }
+    break;
+  case TOML_TYPE_TABLE:
+    {
+      int count = hash_get_itemcount(v->u.tableval);
+      const bytestring *keys[count];
+      hash_get_keys(v->u.tableval, keys, count);
+
+      v2->u.tableval = hash_new(count);
+      for (int i = 0; i < count; i++)
+        hash_add(v2->u.tableval, bytestring_dup(keys[i]), tomlvalue_dup(hash_get(v->u.tableval, keys[i])));
+    }
+    break;
+  default:
+    abort();
+  }
+
+  return v2;
+}
+
 const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked)
 {
   if ((unpacked->year < 1) || (unpacked->year > 9999))

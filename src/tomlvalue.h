@@ -96,6 +96,8 @@ tomlvalue *tomlvalue_new(void);
 tomlvalue *tomlvalue_new_table(void);
 tomlvalue *tomlvalue_new_array(void);
 
+tomlvalue *tomlvalue_dup(tomlvalue *v);
+
 const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked);
 
 bool tomlvalue_get_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *unpacked);
