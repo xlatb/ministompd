@@ -264,7 +264,7 @@ static tomlvalue *tomlparser_walk(tomlparser *tp, tomlvalue *start, list *keypat
       return NULL;
     }
 
-    tomlvalue *subvalue = tomlvalue_get_hash_element(node, key);
+    tomlvalue *subvalue = tomlvalue_get_table_item(node, key);
     if (subvalue == NULL)
     {
       // Auto-vivify table
@@ -282,7 +282,7 @@ static tomlvalue *tomlparser_walk(tomlparser *tp, tomlvalue *start, list *keypat
         return NULL;
       }
 
-      subvalue = tomlvalue_get_array_element(subvalue, len - 1);
+      subvalue = tomlvalue_get_array_item(subvalue, len - 1);
     }
 
     node = subvalue;
@@ -1608,7 +1608,7 @@ static bool tomlparser_parse_array_table_header(tomlparser *tp)
 
   bytestring *key = list_get_item(keypath, list_get_length(keypath) - 1);
 
-  tomlvalue *array = tomlvalue_get_hash_element(node, key);
+  tomlvalue *array = tomlvalue_get_table_item(node, key);
   if (array == NULL)
   {
     // Auto-vivify array
@@ -1696,7 +1696,7 @@ static bool tomlparser_parse_assignment(tomlparser *tp, tomlvalue *context)
 
   // Final key must not exist already
   bytestring *key = list_get_item(keypath, list_get_length(keypath) - 1);
-  tomlvalue *old = tomlvalue_get_hash_element(node, key);
+  tomlvalue *old = tomlvalue_get_table_item(node, key);
   if (old)
   {
     tomlparser_record_error(tp, "Attempt to overwrite populated key");

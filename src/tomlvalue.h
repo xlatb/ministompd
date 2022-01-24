@@ -105,12 +105,32 @@ bool tomlvalue_set_datetime(tomlvalue *v, struct tomlvalue_unpacked_datetime *un
 
 bool tomlvalue_get_tzoffset(tomlvalue *v, bool *negative, int *minutes);
 
-static inline tomlvalue *tomlvalue_get_hash_element(tomlvalue *v, bytestring *key)
+static inline bool tomlvalue_has_type(tomlvalue *v, uint8_t type)
+{
+  return (v->type == type);
+}
+
+static inline tomlvalue *tomlvalue_get_table_item(tomlvalue *v, bytestring *key)
 {
   if (v->type != TOML_TYPE_TABLE)
     return NULL;
 
   return hash_get(v->u.tableval, key);
+}
+
+static inline int tomlvalue_get_table_item_count(tomlvalue *v)
+{
+  if (v->type != TOML_TYPE_TABLE)
+    return 0;
+
+  return hash_get_itemcount(v->u.tableval);
+}
+
+static inline int tomlvalue_get_table_keys(tomlvalue *v, const bytestring **keys, int max)
+{
+  if (v->type != TOML_TYPE_TABLE) return 0;
+
+  return hash_get_keys(v->u.tableval, keys, max);
 }
 
 static inline int tomlvalue_get_array_length(tomlvalue *v)
@@ -121,7 +141,7 @@ static inline int tomlvalue_get_array_length(tomlvalue *v)
   return list_get_length(v->u.arrayval);
 }
 
-static inline tomlvalue *tomlvalue_get_array_element(tomlvalue *v, int index)
+static inline tomlvalue *tomlvalue_get_array_item(tomlvalue *v, int index)
 {
   if (v->type != TOML_TYPE_ARRAY)
     return NULL;
