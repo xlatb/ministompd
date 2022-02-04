@@ -33,7 +33,7 @@ static bytestring *unescape_header_bytestring(bytestring *in)
 
       // Grab rest of input string
       size_t count = inlen - pos;
-      bytestring_append_bytestring(out, in, pos, count);
+      bytestring_append_bytestring_fragment(out, in, pos, count);
       pos += count;
     }
     else
@@ -49,7 +49,7 @@ static bytestring *unescape_header_bytestring(bytestring *in)
       {
         // Copy everything before the backslash
         size_t count = bspos - pos;
-        bytestring_append_bytestring(out, in, pos, count);
+        bytestring_append_bytestring_fragment(out, in, pos, count);
         pos += count;
       }
 
@@ -119,7 +119,7 @@ void frameparser_set_error(frameparser *fp, char *fmt, ...)
   va_list args;
 
   va_start(args, fmt);
-  fp->error = bytestring_append_vprintf(bytestring_new(0), fmt, args);
+  fp->error = bytestring_vprintf(bytestring_new(0), fmt, args);
   va_end(args);
 
   return;

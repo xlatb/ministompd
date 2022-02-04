@@ -48,7 +48,7 @@ connection *connection_new(enum connection_status status, int fd)
 const bytestring *connection_generate_subscription_server_id(connection *c)
 {
   bytestring *id = bytestring_new(32);
-  bytestring_append_printf(id, "sub-%" PRIx32, c->next_sub_server_id);
+  bytestring_printf(id, "sub-%" PRIx32, c->next_sub_server_id);
   c->next_sub_server_id++;
   return id;
 }
