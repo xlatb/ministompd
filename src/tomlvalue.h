@@ -63,12 +63,14 @@ enum tomlvalue_type
 };
 
 #define TOML_TYPESET_MASK      0xF0
+
 #define TOML_TYPESET_SIMPLE    0x00
 #define TOML_TYPESET_DATETIME  0x10
 #define TOML_TYPESET_CONTAINER 0x20
 
 #define TOML_FLAG_AUTOVIVIFIED 0x01
 #define TOML_FLAG_CLOSED       0x02
+#define TOML_FLAG_MARKED       0x04
 
 struct tomlvalue
 {
@@ -89,6 +91,8 @@ struct tomlvalue
 
 typedef struct tomlvalue tomlvalue;
 
+const char *tomlvalue_type_name(enum tomlvalue_type);
+
 void tomlvalue_free(tomlvalue *v);
 void tomlvalue_dump(tomlvalue *v, int indent);
 
@@ -97,6 +101,8 @@ tomlvalue *tomlvalue_new_table(void);
 tomlvalue *tomlvalue_new_array(void);
 
 tomlvalue *tomlvalue_dup(tomlvalue *v);
+
+tomlvalue *tomlvalue_table_walk(tomlvalue *v, const char *path);
 
 const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked);
 
@@ -110,7 +116,12 @@ static inline bool tomlvalue_has_type(tomlvalue *v, uint8_t type)
   return (v->type == type);
 }
 
-static inline tomlvalue *tomlvalue_get_table_item(tomlvalue *v, bytestring *key)
+static inline bool tomlvalue_is_container(tomlvalue *v)
+{
+  return (v->type & TOML_TYPESET_MASK) == TOML_TYPESET_CONTAINER;
+}
+
+static inline tomlvalue *tomlvalue_get_table_item(tomlvalue *v, const bytestring *key)
 {
   if (v->type != TOML_TYPE_TABLE)
     return NULL;

@@ -144,6 +144,38 @@ static void unpack_time(int64_t v, int *yearptr, int *monthptr, int *dayptr, int
   return;
 }
 
+// Given a type, returns a name string.
+const char *tomlvalue_type_name(enum tomlvalue_type type)
+{
+  switch (type)
+  {
+  case TOML_TYPE_NONE:
+    return "NONE";
+  case TOML_TYPE_STR:
+    return "STR";
+  case TOML_TYPE_INT:
+    return "INT";
+  case TOML_TYPE_FLOAT:
+    return "FLOAT";
+  case TOML_TYPE_BOOL:
+    return "BOOL";
+  case TOML_TYPE_TIME:
+    return "TIME";
+  case TOML_TYPE_DATE:
+    return "DATE";
+  case TOML_TYPE_DATETIME:
+    return "DATETIME";
+  case TOML_TYPE_DATETIME_TZ:
+    return "DATETIME_TZ";
+  case TOML_TYPE_ARRAY:
+    return "ARRAY";
+  case TOML_TYPE_TABLE:
+    return "TABLE";
+  };
+
+  abort();
+}
+
 void tomlvalue_free(tomlvalue *v)
 {
   switch (v->type)
@@ -189,48 +221,44 @@ void tomlvalue_free(tomlvalue *v)
 
 void tomlvalue_dump(tomlvalue *v, int indent)
 {
-  for (int i = 0; i < indent; i++) printf("  ");
+  for (int i = 0; i < indent; i++) xprintf("  ");
 
   switch (v->type)
   {
   case TOML_TYPE_NONE:
-    printf("(none)");
+    xprintf("(none)");
     break;
   case TOML_TYPE_STR:
-    {
-      printf("STR length %zu value '", bytestring_get_length(v->u.strval));
-      fwrite(bytestring_get_bytes(v->u.strval), bytestring_get_length(v->u.strval), 1, stdout);
-      printf("'\n");
-    }
+    xprintf("STR length %zu value '%b'\n", bytestring_get_length(v->u.strval), v->u.strval);
     break;
   case TOML_TYPE_INT:
-    printf("INT %" PRId64 "\n", v->u.intval);
+    xprintf("INT %" PRId64 "\n", v->u.intval);
     break;
   case TOML_TYPE_FLOAT:
-    printf("FLOAT %f %e %a\n", v->u.floatval, v->u.floatval, v->u.floatval);
+    xprintf("FLOAT %f %e %a\n", v->u.floatval, v->u.floatval, v->u.floatval);
     break;
   case TOML_TYPE_BOOL:
-    printf("BOOL %s\n", (v->u.boolval) ? "true" : "false");
+    xprintf("BOOL %s\n", (v->u.boolval) ? "true" : "false");
     break;
   case TOML_TYPE_TIME:
     {
       struct tomlvalue_unpacked_datetime unpacked;
       tomlvalue_get_datetime(v, &unpacked);
-      printf("TIME %02d:%02d:%02d.%0*d (%" PRId64 ")\n", unpacked.hour, unpacked.minute, unpacked.second, TOML_TIME_FRAC_DIGITS, unpacked.msec, (int64_t) v->u.datetimeval.msecs);
+      xprintf("TIME %02d:%02d:%02d.%0*d (%" PRId64 ")\n", unpacked.hour, unpacked.minute, unpacked.second, TOML_TIME_FRAC_DIGITS, unpacked.msec, (int64_t) v->u.datetimeval.msecs);
     }
     break;
   case TOML_TYPE_DATE:
     {
       struct tomlvalue_unpacked_datetime unpacked;
       tomlvalue_get_datetime(v, &unpacked);
-      printf("DATE %04d-%02d-%02d (%" PRId64 ")\n", unpacked.year, unpacked.month, unpacked.day, (int64_t) v->u.datetimeval.msecs);
+      xprintf("DATE %04d-%02d-%02d (%" PRId64 ")\n", unpacked.year, unpacked.month, unpacked.day, (int64_t) v->u.datetimeval.msecs);
     }
     break;
   case TOML_TYPE_DATETIME:
     {
       struct tomlvalue_unpacked_datetime unpacked;
       tomlvalue_get_datetime(v, &unpacked);
-      printf("DATETIME %04d-%02d-%02d %02d:%02d:%02d.%0*d (%" PRId64 ")\n",
+      xprintf("DATETIME %04d-%02d-%02d %02d:%02d:%02d.%0*d (%" PRId64 ")\n",
        unpacked.year, unpacked.month, unpacked.day,
        unpacked.hour, unpacked.minute, unpacked.second, TOML_TIME_FRAC_DIGITS, unpacked.msec,
        (int64_t) v->u.datetimeval.msecs);
@@ -240,7 +268,7 @@ void tomlvalue_dump(tomlvalue *v, int indent)
     {
       struct tomlvalue_unpacked_datetime unpacked;
       tomlvalue_get_datetime(v, &unpacked);
-      printf("DATETIME_TZ %04d-%02d-%02d %02d:%02d:%02d.%0*d%c%02d:%02d (%" PRId64 ")\n",
+      xprintf("DATETIME_TZ %04d-%02d-%02d %02d:%02d:%02d.%0*d%c%02d:%02d (%" PRId64 ")\n",
        unpacked.year, unpacked.month, unpacked.day,
        unpacked.hour, unpacked.minute, unpacked.second, TOML_TIME_FRAC_DIGITS, unpacked.msec,
        unpacked.tzneg ? '-' : '+', abs(unpacked.tzminutes) / 60, abs(unpacked.tzminutes) % 60,
@@ -250,7 +278,7 @@ void tomlvalue_dump(tomlvalue *v, int indent)
   case TOML_TYPE_ARRAY:
     {
       int len = list_get_length(v->u.arrayval);
-      printf("ARRAY length %d\n", len);
+      xprintf("ARRAY length %d\n", len);
       for (int i = 0; i < len; i++)
       {
         tomlvalue *kid = list_get_item(v->u.arrayval, i);
@@ -265,13 +293,11 @@ void tomlvalue_dump(tomlvalue *v, int indent)
       const bytestring *keys[count];
       hash_get_keys(v->u.tableval, keys, count);
 
-      printf("TABLE item count %d\n", count);
+      xprintf("TABLE item count %d\n", count);
       for (int i = 0; i < count; i++)
       {
-        for (int j = 0; j < indent; j++) printf("  ");
-        printf("item %d key '", i);
-        fwrite(bytestring_get_bytes(keys[i]), bytestring_get_length(keys[i]), 1, stdout);
-        printf("':\n");
+        for (int j = 0; j < indent; j++) xprintf("  ");
+        xprintf("item %d key '%b':\n", i, keys[i]);
 
         tomlvalue *kid = hash_get(v->u.tableval, keys[i]);
         tomlvalue_dump(kid, indent + 1);
@@ -279,7 +305,7 @@ void tomlvalue_dump(tomlvalue *v, int indent)
     }
     break;
   default:
-    printf("UNKNOWN TYPE %d\n", v->type);
+    xprintf("UNKNOWN TYPE %d\n", v->type);
   }
 }
 
@@ -362,6 +388,32 @@ tomlvalue *tomlvalue_dup(tomlvalue *v)
   }
 
   return v2;
+}
+
+tomlvalue *tomlvalue_table_walk(tomlvalue *v, const char *path)
+{
+  const uint8_t *p = (uint8_t *) path, *q;
+  while (v)
+  {
+    if (!*p)
+      return v;
+
+    if (v->type != TOML_TYPE_TABLE)
+      return NULL;  // Trying to walk inside non-table
+
+    for (q = p; *q && (*q != '.'); q++)
+      ;
+
+    size_t len = q - p;
+    v = hash_get_raw(v->u.tableval, p, len);
+
+    p = q;
+
+    if (*p == '.')
+      p++;
+  }
+
+  return NULL;  // No such value
 }
 
 const char *tomlvalue_unpacked_datetime_check(struct tomlvalue_unpacked_datetime *unpacked)
