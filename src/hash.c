@@ -13,7 +13,7 @@
 #include "ministompd.h"
 
 static bool    siphash_key_set;
-static uint8_t siphash_key[8];
+static uint8_t siphash_key[16];
 
 static bool set_siphash_key_devurandom(void)
 {
